@@ -12,7 +12,7 @@
   {
     "imports": {
       "vue": "https://cdn.jsdelivr.net/npm/vue@3.5.32/dist/vue.esm-browser.js",
-      "vue-router": "https://cdn.jsdelivr.net/npm/vue-router@4/dist/vue-router.esm-browser.js",
+      "vue-router": "https://cdn.jsdelivr.net/npm/vue-router@4.5.0/dist/vue-router.esm-browser.js",
       "@graffiti-garden/implementation-local": "https://cdn.jsdelivr.net/npm/@graffiti-garden/implementation-local@1.2.0/dist/browser/index.js",
       "@graffiti-garden/implementation-decentralized": "https://cdn.jsdelivr.net/npm/@graffiti-garden/implementation-decentralized@0.0.9/dist/browser/index.js",
       "@graffiti-garden/wrapper-vue": "https://cdn.jsdelivr.net/npm/@graffiti-garden/wrapper-vue@1.2.2/dist/browser/plugin.mjs"
@@ -70,6 +70,8 @@
 
     <!-- Shell -->
     <div class="shell">
+      <!-- router-view is required by Vue Router to enable navigation -->
+      <router-view style="display:none"></router-view>
 
       <!-- ════════════════ CHATS TAB ════════════════════════════ -->
       <template v-if="tab==='chats'">

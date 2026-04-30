@@ -110,22 +110,22 @@ const SUGGESTED_TOPICS = [
 ];
 
 // ── Router ─────────────────────────────────────────────────────────
-// Routes:
-//   /               → redirect to /chats
-//   /chats          → DM list, no chat open
-//   /chat/:chatId   → specific DM open             (dynamic route)
-//   /study          → study sessions join page
-//   /study/:groupId → specific study group open    (dynamic route)
-//   /connect        → connect / profiles page
+// IMPORTANT: Vue Router requires every non-redirect route to have a
+// `component` property — routes without one are silently skipped and
+// router.push() never updates the URL.
+// Our app renders via v-if in the main template (not via <router-view>),
+// so we give each route a tiny NullView that renders nothing.
+const NullView = { template: "<span></span>" };
+
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     { path: "/",               redirect: "/chats" },
-    { path: "/chats",          name: "chats" },
-    { path: "/chat/:chatId",   name: "chat" },
-    { path: "/study",          name: "study" },
-    { path: "/study/:groupId", name: "study-group" },
-    { path: "/connect",        name: "connect" },
+    { path: "/chats",          name: "chats",       component: NullView },
+    { path: "/chat/:chatId",   name: "chat",        component: NullView },
+    { path: "/study",          name: "study",       component: NullView },
+    { path: "/study/:groupId", name: "study-group", component: NullView },
+    { path: "/connect",        name: "connect",     component: NullView },
   ],
 });
 
@@ -134,10 +134,9 @@ function setup() {
   const graffiti = useGraffiti();
   const session  = useGraffitiSession();
 
-  // ── Tab derived from router.currentRoute ──────────────────────
-  // We use router.currentRoute directly (a reactive ref on the router object)
-  // instead of useRoute()/useRouter() composables, which are less reliable
-  // in CDN/no-build setups.
+  // tab is derived from the current route name.
+  // We read router.currentRoute directly (a reactive ref on the router
+  // object) — this is more reliable in CDN setups than useRoute().
   const tab = computed(() => {
     const name = router.currentRoute.value.name;
     if (name === "chats" || name === "chat")        return "chats";
@@ -152,7 +151,6 @@ function setup() {
     else if (t === "connect") router.push("/connect");
   }
 
-  // ── Study sub-tab ──────────────────────────────────────────────
   const studySubTab = ref("join");
 
   // ── Active chat state ──────────────────────────────────────────
@@ -270,7 +268,6 @@ function setup() {
     return allDMs.value.filter(d => d.partnerName.toLowerCase().includes(q));
   });
 
-  // Select a DM and push its route
   function selectDM(conv) {
     activeDMChannel.value      = conv.channel;
     activeDMPartnerName.value  = conv.partnerName;
@@ -284,14 +281,10 @@ function setup() {
     const me = session.value.actor;
 
     const dummyMatch = DUMMY_DMS.find(d => d.partnerActor === partnerActor);
-    if (dummyMatch) {
-      selectDM(dummyMatch);
-      return;
-    }
+    if (dummyMatch) { selectDM(dummyMatch); return; }
 
     const existing = dmConvObjects.value.find(c =>
-      c.value.participants.includes(me) &&
-      c.value.participants.includes(partnerActor)
+      c.value.participants.includes(me) && c.value.participants.includes(partnerActor)
     );
     if (existing) {
       selectDM({
@@ -321,7 +314,7 @@ function setup() {
     router.push({ name: "chat", params: { chatId: encodeURIComponent(newCh) } });
   }
 
-  // Watch for direct navigation to /chat/:chatId (browser back/forward, bookmarks)
+  // Restore DM state when navigating directly to /chat/:chatId
   watch(
     () => router.currentRoute.value.params.chatId,
     (chatId) => {
@@ -379,7 +372,6 @@ function setup() {
     }
   }
 
-  // Select a study group and push its route
   function selectGroup(g) {
     activeStudyChannel.value = g.channel;
     activeStudyTitle.value   = g.title;
@@ -390,7 +382,7 @@ function setup() {
 
   const suggestedTopics = SUGGESTED_TOPICS;
 
-  // Watch for direct navigation to /study/:groupId
+  // Restore study state when navigating directly to /study/:groupId
   watch(
     () => router.currentRoute.value.params.groupId,
     (groupId) => {
@@ -505,8 +497,7 @@ function setup() {
     } else if (tab.value === "study" && activeStudyChannel.value) {
       seeds = DUMMY_GROUP_MESSAGES[activeStudyChannel.value] ?? [];
     }
-    const live = messageObjects.value;
-    return [...seeds, ...live]
+    return [...seeds, ...messageObjects.value]
       .toSorted((a, b) => b.value.published - a.value.published);
   });
 
@@ -535,21 +526,18 @@ function setup() {
     try {
       await graffiti.delete(msg, session.value);
     } finally {
-      const s = new Set(deleting.value);
-      s.delete(msg.url);
+      const s = new Set(deleting.value); s.delete(msg.url);
       deleting.value = s;
     }
   }
 
-  // ── Helpers ────────────────────────────────────────────────────
   function isMine(msg) {
     if (msg.isDummy) return msg.isOwn;
     return msg.actor === session.value?.actor;
   }
 
   function senderLabel(msg) {
-    if (msg.isDummy) return msg.senderName;
-    return msg.actor;
+    return msg.isDummy ? msg.senderName : msg.actor;
   }
 
   function fmt(ts) {
@@ -562,19 +550,13 @@ function setup() {
 
   return {
     tab, setTab, studySubTab,
-    // chats
     showNewDM, dmSearch, filteredDMs, pickerResults,
     activeDMChannel, activeDMPartnerName, activeDMPartnerActor, activeDMIsDummy,
     selectDM, openOrCreateDM,
-    // study
-    allGroups, newGroupTitle, creatingGroup,
-    createGroup, selectGroup,
-    activeStudyChannel, activeStudyTitle, activeStudyIsDummy,
-    suggestedTopics,
-    // connect
+    allGroups, newGroupTitle, creatingGroup, createGroup, selectGroup,
+    activeStudyChannel, activeStudyTitle, activeStudyIsDummy, suggestedTopics,
     myProfile, filteredProfiles, searchQ,
     editingProfile, profileDraft, savingProfile, startEdit, saveProfile,
-    // messages
     activeMessages, messagesLoading,
     draft, sending, send,
     deleting, del,
