@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IM App</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+  <script type="importmap">
+  {
+    "imports": {
+      "vue": "https://cdn.jsdelivr.net/npm/vue@3.5.32/dist/vue.esm-browser.js",
+      "@graffiti-garden/implementation-local": "https://cdn.jsdelivr.net/npm/@graffiti-garden/implementation-local@1.2.0/dist/browser/index.js",
+      "@graffiti-garden/implementation-decentralized": "https://cdn.jsdelivr.net/npm/@graffiti-garden/implementation-decentralized@0.0.9/dist/browser/index.js",
+      "@graffiti-garden/wrapper-vue": "https://cdn.jsdelivr.net/npm/@graffiti-garden/wrapper-vue@1.2.2/dist/browser/plugin.mjs"
+    }
+  }
+  </script>
+  <script src="index.js" type="module"></script>
+</head>
+<body>
+<div id="app"><div style="height:100vh;display:flex;align-items:center;justify-content:center;color:#585048;font-family:monospace;font-size:13px">Loading…</div></div>
+
+<template id="template">
+
+  <!-- ── LOGIN ─────────────────────────────────────────────────── -->
+  <template v-if="!$graffitiSession.value">
+    <div class="login-wrap">
+      <div class="login-card">
+        <div class="login-logo">E<em>MIT</em></div>
+        <p class="login-tagline">Communication for MIT students,<br/>done easier.</p>
+        <button class="btn btn-primary" @click="$graffiti.login()">Sign In to Continue</button>
+      </div>
+    </div>
+  </template>
+
+  <!-- ── APP ───────────────────────────────────────────────────── -->
+  <template v-else>
+
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <span class="brand-name">EMIT</span>
+        <span class="brand-tag">Beta</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="user-chip">
+          <span class="user-dot"></span>
+          <graffiti-actor-to-handle :actor="$graffitiSession.value.actor"/>
+        </div>
+        <button class="btn btn-sm" @click="$graffiti.logout($graffitiSession.value)">Sign Out</button>
+      </div>
+    </header>
+
+    <!-- Horizontal Tab Bar -->
+    <nav class="tabbar">
+      <button class="tab-btn" :class="{active: tab==='chats'}" @click="tab='chats'">
+        <span class="tab-icon">✉</span> Chats
+      </button>
+      <button class="tab-btn" :class="{active: tab==='study'}" @click="tab='study'">
+        <span class="tab-icon">◈</span> Study
+      </button>
+      <button class="tab-btn" :class="{active: tab==='connect'}" @click="tab='connect'">
+        <span class="tab-icon">⊕</span> Connect
+      </button>
+    </nav>
+
+    <!-- Shell -->
+    <div class="shell">
+
+      <!-- ════════════════ CHATS TAB ════════════════════════════ -->
+      <template v-if="tab==='chats'">
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+          <div class="sidebar-head">
+            <div class="sidebar-head-row">
+              <span class="sidebar-title">
+                {{ showNewDM ? 'New Message' : 'Direct Messages' }}
+              </span>
+              <button class="btn btn-xs" @click="showNewDM=!showNewDM; dmSearch=''">
+                {{ showNewDM ? '✕ Cancel' : '+ New' }}
+              </button>
+            </div>
+            <div class="search-wrap">
+              <span class="search-icon">⌕</span>
+              <input
+                class="search-field"
+                v-model="dmSearch"
+                :placeholder="showNewDM ? 'Find someone…' : 'Search chats…'"
+              />
+            </div>
+          </div>
+
+          <!-- New DM: user picker -->
+          <template v-if="showNewDM">
+            <div class="user-picker">
+              <div v-if="pickerResults.length===0" class="sidebar-empty">No users found.</div>
+              <div
+                v-for="u of pickerResults" :key="u.actor"
+                class="picker-item"
+                @click="openOrCreateDM(u.actor, u.displayName); showNewDM=false; dmSearch=''"
+              >
+                <div class="picker-avatar">{{ u.displayName[0] }}</div>
+                <div>
+                  <div class="picker-name">{{ u.displayName }}</div>
+                  <div class="picker-sub">{{ u.bio }}</div>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- DM list -->
+          <template v-else>
+            <div class="sidebar-list">
+              <div v-if="filteredDMs.length===0" class="sidebar-empty">
+                No conversations yet.<br/>Hit <strong>+ New</strong> to start one.
+              </div>
+              <div
+                v-for="conv of filteredDMs" :key="conv.url"
+                class="dm-item"
+                :class="{active: activeDMChannel===conv.channel}"
+                @click="selectDM(conv)"
+              >
+                <div class="dm-avatar">{{ conv.partnerName[0].toUpperCase() }}</div>
+                <div class="dm-info">
+                  <div class="dm-handle" v-if="conv.isDummy">{{ conv.partnerName }}</div>
+                  <div class="dm-handle" v-else><graffiti-actor-to-handle :actor="conv.partnerActor"/></div>
+                  <div class="dm-preview">{{ conv.preview }}</div>
+                </div>
+              </div>
+            </div>
+          </template>
+        </aside>
+
+        <!-- DM messages -->
+        <main class="main">
+          <template v-if="!activeDMChannel">
+            <div class="empty-chat">
+              <div class="empty-glyph">✉</div>
+              <div class="empty-label">No conversation open</div>
+              <div class="empty-hint">← select or start a new chat</div>
+            </div>
+          </template>
+          <template v-else>
+            <div class="chat-top">
+              <span class="chat-top-name" v-if="activeDMIsDummy">{{ activeDMPartnerName }}</span>
+              <span class="chat-top-name" v-else><graffiti-actor-to-handle :actor="activeDMPartnerActor"/></span>
+              <span class="badge badge-dm">DM</span>
+            </div>
+            <div class="msg-list">
+              <template v-if="messagesLoading && !activeDMIsDummy">
+                <div class="loading-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+              </template>
+              <template v-else>
+                <div v-if="activeMessages.length===0" class="empty-chat" style="flex:1">
+                  <div class="empty-glyph">[ ]</div>
+                  <div class="empty-label">Say hello.</div>
+                </div>
+                <div v-for="m of activeMessages" :key="m.url" class="msg" :class="{own: isMine(m)}">
+                  <div class="msg-row">
+                    <span class="msg-actor" v-if="m.isDummy">{{ m.senderName }}</span><span class="msg-actor" v-else><graffiti-actor-to-handle :actor="m.actor"/></span>
+                    <span class="msg-ts">{{ fmt(m.value.published) }}</span>
+                  </div>
+                  <div class="msg-bubble">{{ m.value.content }}</div>
+                  <div class="msg-acts" v-if="isMine(m) && !m.isDummy">
+                    <button class="btn btn-ghost" @click="del(m)" :disabled="deleting.has(m.url)">
+                      {{ deleting.has(m.url) ? '…' : '✕ delete' }}
+                    </button>
+                  </div>
+                </div>
+              </template>
+            </div>
+            <div class="input-bar">
+              <input class="msg-input" v-model="draft" placeholder="Type a message…" @keyup.enter="send()"/>
+              <button class="btn btn-primary" @click="send()" :disabled="!draft.trim()||sending">
+                {{ sending ? '…' : 'Send' }}
+              </button>
+            </div>
+          </template>
+        </main>
+      </template>
+
+      <!-- ════════════════ STUDY TAB ════════════════════════════ -->
+      <template v-else-if="tab==='study'">
+        <div class="study-wrap">
+
+          <!-- Study sub-tabs -->
+          <nav class="study-subtabs">
+            <button class="subtab-btn" :class="{active: studySubTab==='join'}"    @click="studySubTab='join'">Join</button>
+            <button class="subtab-btn" :class="{active: studySubTab==='session'}" @click="studySubTab='session'">Session Chats</button>
+          </nav>
+
+          <!-- ── JOIN sub-tab ─────────────────────────────────── -->
+          <template v-if="studySubTab==='join'">
+            <div class="join-pane">
+              <!-- Create form -->
+              <div class="join-create-bar">
+                <input class="field" style="flex:1" v-model="newGroupTitle" placeholder="New session name…" @keyup.enter="createGroup()"/>
+                <button class="btn btn-primary" @click="createGroup()" :disabled="!newGroupTitle.trim()||creatingGroup">
+                  {{ creatingGroup ? 'Creating…' : '+ Create' }}
+                </button>
+              </div>
+              <!-- Session cards -->
+              <div class="session-grid">
+                <div v-if="allGroups.length===0" class="join-empty">No sessions yet. Create one above.</div>
+                <div
+                  v-for="g of allGroups" :key="g.url"
+                  class="session-card"
+                  :class="{joined: activeStudyChannel===g.channel}"
+                  @click="selectGroup(g); studySubTab='session'"
+                >
+                  <div class="session-card-title">{{ g.title }}</div>
+                  <div class="session-card-meta">
+                    by {{ g.creatorName }}
+                    <span v-if="g.isDummy" class="demo-tag">demo</span>
+                  </div>
+                  <div class="session-card-action">
+                    {{ activeStudyChannel===g.channel ? 'Open chat →' : 'Join →' }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- ── SESSION CHATS sub-tab ────────────────────────── -->
+          <template v-else>
+            <div class="study-chat-wrap">
+
+              <!-- Sidebar: joined sessions -->
+              <aside class="sidebar">
+                <div class="sidebar-head">
+                  <div class="sidebar-head-row">
+                    <span class="sidebar-title">My Sessions</span>
+                    <button class="btn btn-xs" @click="studySubTab='join'">+ Join</button>
+                  </div>
+                </div>
+                <div class="sidebar-list">
+                  <div v-if="allGroups.length===0" class="sidebar-empty">
+                    No sessions yet.<br/>Go to <strong>Join</strong> to find one.
+                  </div>
+                  <div
+                    v-for="g of allGroups" :key="g.url"
+                    class="group-item" :class="{active: activeStudyChannel===g.channel}"
+                    @click="selectGroup(g)"
+                  >
+                    <div class="group-title">{{ g.title }}</div>
+                    <div class="group-meta">
+                      <em>by {{ g.creatorName }}</em>
+                      <span v-if="g.isDummy" style="color:var(--amber-dim)"> · demo</span>
+                    </div>
+                  </div>
+                </div>
+              </aside>
+
+              <!-- Messages -->
+              <main class="main">
+                <template v-if="!activeStudyChannel">
+                  <div class="empty-chat">
+                    <div class="empty-glyph">◈</div>
+                    <div class="empty-label">No session open</div>
+                    <div class="empty-hint">← pick a session, or Join one</div>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="chat-top">
+                    <span class="chat-top-name">{{ activeStudyTitle }}</span>
+                    <span class="badge badge-grp">Group</span>
+                  </div>
+                  <div class="msg-list">
+                    <template v-if="messagesLoading && !activeStudyIsDummy">
+                      <div class="loading-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+                    </template>
+                    <template v-else>
+                      <div v-if="activeMessages.length===0" class="empty-chat" style="flex:1">
+                        <div class="empty-glyph">[ ]</div>
+                        <div class="empty-label">Start the session.</div>
+                      </div>
+                      <div v-for="m of activeMessages" :key="m.url" class="msg" :class="{own: isMine(m)}">
+                        <div class="msg-row">
+                          <span class="msg-actor" v-if="m.isDummy">{{ m.senderName }}</span>
+                          <span class="msg-actor" v-else><graffiti-actor-to-handle :actor="m.actor"/></span>
+                          <span class="msg-ts">{{ fmt(m.value.published) }}</span>
+                        </div>
+                        <div class="msg-bubble">{{ m.value.content }}</div>
+                        <div class="msg-acts" v-if="isMine(m) && !m.isDummy">
+                          <button class="btn btn-ghost" @click="del(m)" :disabled="deleting.has(m.url)">
+                            {{ deleting.has(m.url) ? '…' : '✕ delete' }}
+                          </button>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                  <div class="input-bar">
+                    <input class="msg-input" v-model="draft" placeholder="Type a message…" @keyup.enter="send()"/>
+                    <button class="btn btn-primary" @click="send()" :disabled="!draft.trim()||sending">
+                      {{ sending ? '…' : 'Send' }}
+                    </button>
+                  </div>
+                </template>
+              </main>
+            </div>
+          </template>
+
+        </div>
+      </template>
+
+      <!-- ════════════════ CONNECT TAB ══════════════════════════ -->
+      <template v-else-if="tab==='connect'">
+        <div class="connect-wrap">
+
+          <!-- My Profile panel -->
+          <div class="my-profile-panel">
+            <div class="panel-section-title">My Profile</div>
+            <template v-if="!editingProfile">
+              <div class="profile-card">
+                <div class="profile-name">{{ myProfile?.value.displayName || '—' }}</div>
+                <div class="profile-bio">{{ myProfile?.value.bio || 'No bio set.' }}</div>
+                <div class="profile-handle">
+                  <graffiti-actor-to-handle :actor="$graffitiSession.value.actor"/>
+                </div>
+              </div>
+              <button class="btn btn-sm" style="align-self:flex-start" @click="startEdit()">
+                {{ myProfile ? 'Edit Profile' : 'Set Up Profile' }}
+              </button>
+            </template>
+            <template v-else>
+              <div class="profile-form">
+                <div>
+                  <label class="field-label">Display Name</label>
+                  <input class="field" v-model="profileDraft.displayName" placeholder="Your name…"/>
+                </div>
+                <div>
+                  <label class="field-label">Bio</label>
+                  <textarea class="field" v-model="profileDraft.bio" placeholder="A short bio…" rows="3" style="resize:none"></textarea>
+                </div>
+                <div style="display:flex;gap:8px">
+                  <button class="btn btn-primary btn-sm" @click="saveProfile()" :disabled="savingProfile">
+                    {{ savingProfile ? 'Saving…' : 'Save' }}
+                  </button>
+                  <button class="btn btn-sm" @click="editingProfile=false">Cancel</button>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- People search -->
+          <div class="search-pane">
+            <div class="search-head">
+              <h2>Find People</h2>
+              <div class="search-wrap">
+                <span class="search-icon">⌕</span>
+                <input class="search-field" v-model="searchQ" placeholder="Search by name or bio…"/>
+              </div>
+            </div>
+            <div class="search-results">
+              <div v-if="filteredProfiles.length===0" class="no-results">
+                {{ searchQ ? `No results for "${searchQ}"` : 'No profiles found.' }}
+              </div>
+              <div v-for="p of filteredProfiles" :key="p.actor" class="result-item">
+                <div class="result-avatar">{{ p.value.displayName[0] }}</div>
+                <div class="result-info">
+                  <div class="result-name">{{ p.value.displayName }}</div>
+                  <div class="result-bio">{{ p.value.bio }}</div>
+                  <div class="result-actor" v-if="!p.isDummy">
+                    <graffiti-actor-to-handle :actor="p.actor"/>
+                  </div>
+                  <div class="result-actor" v-else>demo account</div>
+                </div>
+                <button
+                  class="btn btn-sm"
+                  @click="openOrCreateDM(p.actor, p.value.displayName); tab='chats'"
+                  :disabled="p.actor===$graffitiSession.value.actor"
+                >
+                  Message
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+
+    </div><!-- /shell -->
+  </template>
+
+</template>
+</body>
+</html>
