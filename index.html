@@ -162,18 +162,14 @@
                   <div class="empty-glyph">[ ]</div>
                   <div class="empty-label">Say hello.</div>
                 </div>
-                <div v-for="m of activeMessages" :key="m.url" class="msg" :class="{own: isMine(m)}">
-                  <div class="msg-row">
-                    <span class="msg-actor" v-if="m.isDummy">{{ m.senderName }}</span><span class="msg-actor" v-else><graffiti-actor-to-handle :actor="m.actor"/></span>
-                    <span class="msg-ts">{{ fmt(m.value.published) }}</span>
-                  </div>
-                  <div class="msg-bubble">{{ m.value.content }}</div>
-                  <div class="msg-acts" v-if="isMine(m) && !m.isDummy">
-                    <button class="btn btn-ghost" @click="del(m)" :disabled="deleting.has(m.url)">
-                      {{ deleting.has(m.url) ? '…' : '✕ delete' }}
-                    </button>
-                  </div>
-                </div>
+                <chat-message
+                  v-for="m of activeMessages"
+                  :key="m.url"
+                  :message="m"
+                  :is-own="isMine(m)"
+                  :is-deleting="deleting.has(m.url)"
+                  @delete="del"
+                />
               </template>
             </div>
             <div class="input-bar">
@@ -281,19 +277,14 @@
                         <div class="empty-glyph">[ ]</div>
                         <div class="empty-label">Start the session.</div>
                       </div>
-                      <div v-for="m of activeMessages" :key="m.url" class="msg" :class="{own: isMine(m)}">
-                        <div class="msg-row">
-                          <span class="msg-actor" v-if="m.isDummy">{{ m.senderName }}</span>
-                          <span class="msg-actor" v-else><graffiti-actor-to-handle :actor="m.actor"/></span>
-                          <span class="msg-ts">{{ fmt(m.value.published) }}</span>
-                        </div>
-                        <div class="msg-bubble">{{ m.value.content }}</div>
-                        <div class="msg-acts" v-if="isMine(m) && !m.isDummy">
-                          <button class="btn btn-ghost" @click="del(m)" :disabled="deleting.has(m.url)">
-                            {{ deleting.has(m.url) ? '…' : '✕ delete' }}
-                          </button>
-                        </div>
-                      </div>
+                      <chat-message
+                        v-for="m of activeMessages"
+                        :key="m.url"
+                        :message="m"
+                        :is-own="isMine(m)"
+                        :is-deleting="deleting.has(m.url)"
+                        @delete="del"
+                      />
                     </template>
                   </div>
                   <div class="input-bar">
@@ -389,5 +380,24 @@
   </template>
 
 </template>
+<!-- ── ChatMessage component template ───────────────────────────── -->
+<!-- Props: message (Object), isOwn (Boolean), isDeleting (Boolean) -->
+<!-- Emits: delete(message)                                          -->
+<template id="chat-message-template">
+  <div class="msg" :class="{own: isOwn}">
+    <div class="msg-row">
+      <span class="msg-actor" v-if="message.isDummy">{{ message.senderName }}</span>
+      <span class="msg-actor" v-else><graffiti-actor-to-handle :actor="message.actor"/></span>
+      <span class="msg-ts">{{ fmt(message.value.published) }}</span>
+    </div>
+    <div class="msg-bubble">{{ message.value.content }}</div>
+    <div class="msg-acts" v-if="isOwn && !message.isDummy">
+      <button class="btn btn-ghost" @click="$emit('delete', message)" :disabled="isDeleting">
+        {{ isDeleting ? '…' : '✕ delete' }}
+      </button>
+    </div>
+  </div>
+</template>
+
 </body>
 </html>

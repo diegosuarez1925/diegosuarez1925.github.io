@@ -109,6 +109,33 @@ const SUGGESTED_TOPICS = [
   "Portfolio Review", "Research Methods",
 ];
 
+// ── ChatMessage component ──────────────────────────────────────────
+// Renders a single message bubble with sender, timestamp, content,
+// and an optional delete button for messages the current user owns.
+// Props:   message    – the message object
+//          isOwn      – true if the current user sent this message
+//          isDeleting – true while the delete request is in flight
+// Emits:   delete(message)
+const ChatMessage = {
+  template: "#chat-message-template",
+  props: {
+    message:    { type: Object,  required: true },
+    isOwn:      { type: Boolean, default: false },
+    isDeleting: { type: Boolean, default: false },
+  },
+  emits: ["delete"],
+  setup() {
+    function fmt(ts) {
+      if (!ts) return "";
+      const d = new Date(ts), now = new Date();
+      const today = d.toDateString() === now.toDateString();
+      const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      return today ? time : d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + time;
+    }
+    return { fmt };
+  },
+};
+
 // ── Router ─────────────────────────────────────────────────────────
 // IMPORTANT: Vue Router requires every non-redirect route to have a
 // `component` property — routes without one are silently skipped and
@@ -564,7 +591,7 @@ function setup() {
   };
 }
 
-const App = { template: "#template", setup };
+const App = { template: "#template", setup, components: { ChatMessage } };
 
 createApp(App)
   .use(GraffitiPlugin, { graffiti: new GraffitiDecentralized() })
