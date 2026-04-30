@@ -12,6 +12,7 @@
   {
     "imports": {
       "vue": "https://cdn.jsdelivr.net/npm/vue@3.5.32/dist/vue.esm-browser.js",
+      "vue-router": "https://cdn.jsdelivr.net/npm/vue-router@4/dist/vue-router.esm-browser.js",
       "@graffiti-garden/implementation-local": "https://cdn.jsdelivr.net/npm/@graffiti-garden/implementation-local@1.2.0/dist/browser/index.js",
       "@graffiti-garden/implementation-decentralized": "https://cdn.jsdelivr.net/npm/@graffiti-garden/implementation-decentralized@0.0.9/dist/browser/index.js",
       "@graffiti-garden/wrapper-vue": "https://cdn.jsdelivr.net/npm/@graffiti-garden/wrapper-vue@1.2.2/dist/browser/plugin.mjs"
@@ -56,13 +57,13 @@
 
     <!-- Horizontal Tab Bar -->
     <nav class="tabbar">
-      <button class="tab-btn" :class="{active: tab==='chats'}" @click="tab='chats'">
+      <button class="tab-btn" :class="{active: tab==='chats'}" @click="setTab('chats')">
         <span class="tab-icon">✉</span> Chats
       </button>
-      <button class="tab-btn" :class="{active: tab==='study'}" @click="tab='study'">
+      <button class="tab-btn" :class="{active: tab==='study'}" @click="setTab('study')">
         <span class="tab-icon">◈</span> Study
       </button>
-      <button class="tab-btn" :class="{active: tab==='connect'}" @click="tab='connect'">
+      <button class="tab-btn" :class="{active: tab==='connect'}" @click="setTab('connect')">
         <span class="tab-icon">⊕</span> Connect
       </button>
     </nav>
