@@ -1,4 +1,5 @@
-import { createApp, ref, computed } from "vue";
+import { createApp, ref, computed, watch } from "vue";
+import { createRouter, createWebHashHistory } from "vue-router";
 import { GraffitiDecentralized } from "@graffiti-garden/implementation-decentralized";
 import {
   GraffitiPlugin,
@@ -26,7 +27,6 @@ const DUMMY_PROFILES = [
   { actor: "dummy-prof",   displayName: "Prof. DesignFTW",  bio: "Teaching design methods and critical theory." },
 ];
 
-// DM conversations (channel is deterministic so messages resolve correctly)
 const DUMMY_DMS = [
   {
     url: "dummy-dm-alex", channel: "dummy-ch-alex",
@@ -80,27 +80,27 @@ const DUMMY_GROUPS = [
 
 const DUMMY_GROUP_MESSAGES = {
   "dummy-grp-ch-1": [
-    { url: "g1-1", isDummy: true, senderName: "alex.chen",      isOwn: false, value: { content: "Has anyone started the review sheet?",                           published: NOW - 2 * HR } },
-    { url: "g1-2", isDummy: true, senderName: "sarah.kim",      isOwn: false, value: { content: "I made a shared doc! Adding it to the group now",               published: NOW - 1.8 * HR } },
+    { url: "g1-1", isDummy: true, senderName: "alex.chen",      isOwn: false, value: { content: "Has anyone started the review sheet?",                               published: NOW - 2 * HR } },
+    { url: "g1-2", isDummy: true, senderName: "sarah.kim",      isOwn: false, value: { content: "I made a shared doc! Adding it to the group now",                   published: NOW - 1.8 * HR } },
     { url: "g1-3", isDummy: true, senderName: "m.johnson",      isOwn: false, value: { content: "This chapter on affordances is definitely going to be on the exam", published: NOW - 1.5 * HR } },
-    { url: "g1-4", isDummy: true, senderName: "alex.chen",      isOwn: false, value: { content: "Norman's seven stages too — super testable",                    published: NOW - 1.2 * HR } },
-    { url: "g1-5", isDummy: true, senderName: "sarah.kim",      isOwn: false, value: { content: "Should we schedule a proper study session this weekend?",        published: NOW - HR } },
-    { url: "g1-6", isDummy: true, senderName: "m.johnson",      isOwn: false, value: { content: "Saturday afternoon works for me",                               published: NOW - 55 * MIN } },
+    { url: "g1-4", isDummy: true, senderName: "alex.chen",      isOwn: false, value: { content: "Norman's seven stages too — super testable",                        published: NOW - 1.2 * HR } },
+    { url: "g1-5", isDummy: true, senderName: "sarah.kim",      isOwn: false, value: { content: "Should we schedule a proper study session this weekend?",            published: NOW - HR } },
+    { url: "g1-6", isDummy: true, senderName: "m.johnson",      isOwn: false, value: { content: "Saturday afternoon works for me",                                   published: NOW - 55 * MIN } },
   ],
   "dummy-grp-ch-2": [
-    { url: "g2-1", isDummy: true, senderName: "sarah.kim",      isOwn: false, value: { content: "That was a tough sprint ngl",                                    published: NOW - 5 * HR } },
-    { url: "g2-2", isDummy: true, senderName: "m.johnson",      isOwn: false, value: { content: "I think our prototype came out really well though",              published: NOW - 4.5 * HR } },
-    { url: "g2-3", isDummy: true, senderName: "alex.chen",      isOwn: false, value: { content: "The user feedback session was genuinely so helpful",             published: NOW - 4 * HR } },
-    { url: "g2-4", isDummy: true, senderName: "sarah.kim",      isOwn: false, value: { content: "Agreed. Way better than peer review alone",                     published: NOW - 3.5 * HR } },
-    { url: "g2-5", isDummy: true, senderName: "m.johnson",      isOwn: false, value: { content: "Who's writing the reflection doc?",                             published: NOW - 3 * HR } },
+    { url: "g2-1", isDummy: true, senderName: "sarah.kim",      isOwn: false, value: { content: "That was a tough sprint ngl",                                        published: NOW - 5 * HR } },
+    { url: "g2-2", isDummy: true, senderName: "m.johnson",      isOwn: false, value: { content: "I think our prototype came out really well though",                  published: NOW - 4.5 * HR } },
+    { url: "g2-3", isDummy: true, senderName: "alex.chen",      isOwn: false, value: { content: "The user feedback session was genuinely so helpful",                 published: NOW - 4 * HR } },
+    { url: "g2-4", isDummy: true, senderName: "sarah.kim",      isOwn: false, value: { content: "Agreed. Way better than peer review alone",                         published: NOW - 3.5 * HR } },
+    { url: "g2-5", isDummy: true, senderName: "m.johnson",      isOwn: false, value: { content: "Who's writing the reflection doc?",                                 published: NOW - 3 * HR } },
   ],
   "dummy-grp-ch-3": [
-    { url: "g3-1", isDummy: true, senderName: "prof.designftw", isOwn: false, value: { content: "Welcome everyone! Let's start by sharing our research questions",published: NOW - 3 * DAY } },
-    { url: "g3-2", isDummy: true, senderName: "m.johnson",      isOwn: false, value: { content: "Mine is about how AI tools affect creative agency in design",    published: NOW - 3 * DAY + 10 * MIN } },
-    { url: "g3-3", isDummy: true, senderName: "jamie.park",     isOwn: false, value: { content: "I'm exploring participatory methods in community-centered design",published: NOW - 3 * DAY + 20 * MIN } },
-    { url: "g3-4", isDummy: true, senderName: "prof.designftw", isOwn: false, value: { content: "Great threads. Let's dig into research framing next week",       published: NOW - 3 * DAY + 30 * MIN } },
-    { url: "g3-5", isDummy: true, senderName: "alex.chen",      isOwn: false, value: { content: "Should we share our literature maps before the session?",        published: NOW - 2 * DAY } },
-    { url: "g3-6", isDummy: true, senderName: "prof.designftw", isOwn: false, value: { content: "Yes, please post them to the channel by Tuesday",               published: NOW - DAY - 6 * HR } },
+    { url: "g3-1", isDummy: true, senderName: "prof.designftw", isOwn: false, value: { content: "Welcome everyone! Let's start by sharing our research questions",    published: NOW - 3 * DAY } },
+    { url: "g3-2", isDummy: true, senderName: "m.johnson",      isOwn: false, value: { content: "Mine is about how AI tools affect creative agency in design",        published: NOW - 3 * DAY + 10 * MIN } },
+    { url: "g3-3", isDummy: true, senderName: "jamie.park",     isOwn: false, value: { content: "I'm exploring participatory methods in community-centered design",   published: NOW - 3 * DAY + 20 * MIN } },
+    { url: "g3-4", isDummy: true, senderName: "prof.designftw", isOwn: false, value: { content: "Great threads. Let's dig into research framing next week",           published: NOW - 3 * DAY + 30 * MIN } },
+    { url: "g3-5", isDummy: true, senderName: "alex.chen",      isOwn: false, value: { content: "Should we share our literature maps before the session?",            published: NOW - 2 * DAY } },
+    { url: "g3-6", isDummy: true, senderName: "prof.designftw", isOwn: false, value: { content: "Yes, please post them to the channel by Tuesday",                   published: NOW - DAY - 6 * HR } },
   ],
 };
 
@@ -109,23 +109,60 @@ const SUGGESTED_TOPICS = [
   "Portfolio Review", "Research Methods",
 ];
 
+// ── Router ─────────────────────────────────────────────────────────
+// Routes:
+//   /               → redirect to /chats
+//   /chats          → DM list, no chat open
+//   /chat/:chatId   → specific DM open             (dynamic route)
+//   /study          → study sessions join page
+//   /study/:groupId → specific study group open    (dynamic route)
+//   /connect        → connect / profiles page
+const router = createRouter({
+  history: createWebHashHistory(),
+  routes: [
+    { path: "/",               redirect: "/chats" },
+    { path: "/chats",          name: "chats" },
+    { path: "/chat/:chatId",   name: "chat" },
+    { path: "/study",          name: "study" },
+    { path: "/study/:groupId", name: "study-group" },
+    { path: "/connect",        name: "connect" },
+  ],
+});
+
 // ── Setup ──────────────────────────────────────────────────────────
 function setup() {
   const graffiti = useGraffiti();
   const session  = useGraffitiSession();
 
-  // ── Navigation ─────────────────────────────────────────────────
-  const tab          = ref("chats");
-  const studySubTab  = ref("join"); // 'join' | 'session'
+  // ── Tab derived from router.currentRoute ──────────────────────
+  // We use router.currentRoute directly (a reactive ref on the router object)
+  // instead of useRoute()/useRouter() composables, which are less reliable
+  // in CDN/no-build setups.
+  const tab = computed(() => {
+    const name = router.currentRoute.value.name;
+    if (name === "chats" || name === "chat")        return "chats";
+    if (name === "study" || name === "study-group") return "study";
+    if (name === "connect")                         return "connect";
+    return "chats";
+  });
+
+  function setTab(t) {
+    if (t === "chats")        router.push("/chats");
+    else if (t === "study")   router.push("/study");
+    else if (t === "connect") router.push("/connect");
+  }
+
+  // ── Study sub-tab ──────────────────────────────────────────────
+  const studySubTab = ref("join");
 
   // ── Active chat state ──────────────────────────────────────────
   const activeDMChannel      = ref(null);
-  const activeDMPartnerName  = ref(null);  // used for dummy chats
-  const activeDMPartnerActor = ref(null);  // used for real chats
+  const activeDMPartnerName  = ref(null);
+  const activeDMPartnerActor = ref(null);
   const activeDMIsDummy      = ref(false);
-  const activeStudyChannel  = ref(null);
-  const activeStudyTitle    = ref(null);
-  const activeStudyIsDummy  = ref(false);
+  const activeStudyChannel   = ref(null);
+  const activeStudyTitle     = ref(null);
+  const activeStudyIsDummy   = ref(false);
 
   const activeChannel = computed(() => {
     if (tab.value === "chats") return activeDMChannel.value;
@@ -207,7 +244,6 @@ function setup() {
   const showNewDM = ref(false);
   const dmSearch  = ref("");
 
-  // Merge real DMs (for this user) with dummy DMs
   const realDMs = computed(() => {
     if (!session.value) return [];
     return dmConvObjects.value
@@ -234,37 +270,38 @@ function setup() {
     return allDMs.value.filter(d => d.partnerName.toLowerCase().includes(q));
   });
 
+  // Select a DM and push its route
   function selectDM(conv) {
     activeDMChannel.value      = conv.channel;
-    activeDMPartnerName.value  = conv.partnerName;   // for dummy chats
-    activeDMPartnerActor.value = conv.partnerActor;  // for real chats
+    activeDMPartnerName.value  = conv.partnerName;
+    activeDMPartnerActor.value = conv.partnerActor;
     activeDMIsDummy.value      = conv.isDummy ?? false;
+    router.push({ name: "chat", params: { chatId: encodeURIComponent(conv.channel) } });
   }
 
   async function openOrCreateDM(partnerActor, partnerDisplayName) {
     if (!session.value) return;
     const me = session.value.actor;
 
-    // Check dummy
     const dummyMatch = DUMMY_DMS.find(d => d.partnerActor === partnerActor);
     if (dummyMatch) {
       selectDM(dummyMatch);
-      tab.value = "chats";
       return;
     }
 
-    // Check existing real DM
     const existing = dmConvObjects.value.find(c =>
       c.value.participants.includes(me) &&
       c.value.participants.includes(partnerActor)
     );
     if (existing) {
-      selectDM({ url: existing.url, channel: existing.value.channel, partnerActor, partnerName: partnerDisplayName || partnerActor, isDummy: false, created: existing.value.created });
-      tab.value = "chats";
+      selectDM({
+        url: existing.url, channel: existing.value.channel,
+        partnerActor, partnerName: partnerDisplayName || partnerActor,
+        isDummy: false, created: existing.value.created,
+      });
       return;
     }
 
-    // Create new
     const newCh = crypto.randomUUID();
     await graffiti.post(
       {
@@ -281,8 +318,31 @@ function setup() {
     activeDMChannel.value     = newCh;
     activeDMPartnerName.value = partnerDisplayName || partnerActor;
     activeDMIsDummy.value     = false;
-    tab.value = "chats";
+    router.push({ name: "chat", params: { chatId: encodeURIComponent(newCh) } });
   }
+
+  // Watch for direct navigation to /chat/:chatId (browser back/forward, bookmarks)
+  watch(
+    () => router.currentRoute.value.params.chatId,
+    (chatId) => {
+      if (!chatId) {
+        if (router.currentRoute.value.name === "chats") activeDMChannel.value = null;
+        return;
+      }
+      const channel = decodeURIComponent(chatId);
+      if (activeDMChannel.value === channel) return;
+      const conv = allDMs.value.find(d => d.channel === channel);
+      if (conv) {
+        activeDMChannel.value      = conv.channel;
+        activeDMPartnerName.value  = conv.partnerName;
+        activeDMPartnerActor.value = conv.partnerActor;
+        activeDMIsDummy.value      = conv.isDummy ?? false;
+      } else {
+        activeDMChannel.value = channel;
+      }
+    },
+    { immediate: true }
+  );
 
   // ── Study groups ───────────────────────────────────────────────
   const newGroupTitle = ref("");
@@ -319,18 +379,40 @@ function setup() {
     }
   }
 
+  // Select a study group and push its route
   function selectGroup(g) {
     activeStudyChannel.value = g.channel;
     activeStudyTitle.value   = g.title;
     activeStudyIsDummy.value = g.isDummy ?? false;
+    studySubTab.value        = "session";
+    router.push({ name: "study-group", params: { groupId: encodeURIComponent(g.channel) } });
   }
 
   const suggestedTopics = SUGGESTED_TOPICS;
 
+  // Watch for direct navigation to /study/:groupId
+  watch(
+    () => router.currentRoute.value.params.groupId,
+    (groupId) => {
+      if (!groupId) return;
+      const channel = decodeURIComponent(groupId);
+      if (activeStudyChannel.value === channel) return;
+      const g = allGroups.value.find(g => g.channel === channel);
+      if (g) {
+        activeStudyChannel.value = g.channel;
+        activeStudyTitle.value   = g.title;
+        activeStudyIsDummy.value = g.isDummy ?? false;
+      } else {
+        activeStudyChannel.value = channel;
+      }
+      studySubTab.value = "session";
+    },
+    { immediate: true }
+  );
+
   // ── Profiles ───────────────────────────────────────────────────
   const searchQ = ref("");
 
-  // Most-recent real profile per actor
   const latestRealProfiles = computed(() => {
     const map = new Map();
     for (const p of profileObjects.value) {
@@ -346,13 +428,11 @@ function setup() {
       : null
   );
 
-  // Dummy profiles shaped like real profile objects
   const dummyProfileObjs = DUMMY_PROFILES.map(p => ({
     actor: p.actor, isDummy: true,
     value: { displayName: p.displayName, bio: p.bio, type: "Profile", published: 0 },
   }));
 
-  // Merge real (others) + dummy for Connect search
   const allProfiles = computed(() => {
     const myActor = session.value?.actor;
     const realOthers = latestRealProfiles.value.filter(p => p.actor !== myActor);
@@ -368,7 +448,6 @@ function setup() {
     );
   });
 
-  // Profile picker for New DM panel
   const pickerResults = computed(() => {
     const q = dmSearch.value.toLowerCase().trim();
     const all = allProfiles.value.map(p => ({
@@ -383,7 +462,6 @@ function setup() {
     );
   });
 
-  // Profile edit
   const editingProfile = ref(false);
   const savingProfile  = ref(false);
   const profileDraft   = ref({ displayName: "", bio: "" });
@@ -419,7 +497,7 @@ function setup() {
     }
   }
 
-  // ── Active messages (seed dummy + live Graffiti, merged) ──────
+  // ── Active messages ────────────────────────────────────────────
   const activeMessages = computed(() => {
     let seeds = [];
     if (tab.value === "chats" && activeDMChannel.value) {
@@ -427,14 +505,14 @@ function setup() {
     } else if (tab.value === "study" && activeStudyChannel.value) {
       seeds = DUMMY_GROUP_MESSAGES[activeStudyChannel.value] ?? [];
     }
-    const live = messageObjects.value; // real Graffiti objects
+    const live = messageObjects.value;
     return [...seeds, ...live]
       .toSorted((a, b) => b.value.published - a.value.published);
   });
 
   // ── Send / Delete ──────────────────────────────────────────────
-  const draft   = ref("");
-  const sending = ref(false);
+  const draft    = ref("");
+  const sending  = ref(false);
   const deleting = ref(new Set());
 
   async function send() {
@@ -471,9 +549,6 @@ function setup() {
 
   function senderLabel(msg) {
     if (msg.isDummy) return msg.senderName;
-    // For real messages, fall back to truncated actor; graffiti-actor-to-handle
-    // isn't usable as a function, so we return the actor string here —
-    // the template uses graffiti-actor-to-handle for real messages via v-if.
     return msg.actor;
   }
 
@@ -486,7 +561,7 @@ function setup() {
   }
 
   return {
-    tab, studySubTab,
+    tab, setTab, studySubTab,
     // chats
     showNewDM, dmSearch, filteredDMs, pickerResults,
     activeDMChannel, activeDMPartnerName, activeDMPartnerActor, activeDMIsDummy,
@@ -511,4 +586,5 @@ const App = { template: "#template", setup };
 
 createApp(App)
   .use(GraffitiPlugin, { graffiti: new GraffitiDecentralized() })
+  .use(router)
   .mount("#app");
