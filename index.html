@@ -19,7 +19,7 @@
     }
   }
   </script>
-  <script src="index.js?v=2" type="module"></script>
+  <script src="index.js" type="module"></script>
 </head>
 <body>
 <div id="app"><div style="height:100vh;display:flex;align-items:center;justify-content:center;color:#585048;font-family:monospace;font-size:13px">Loading…</div></div>
@@ -132,6 +132,10 @@
                   <div class="dm-handle" v-if="conv.isDummy">{{ conv.partnerName }}</div>
                   <div class="dm-handle" v-else><graffiti-actor-to-handle :actor="conv.partnerActor"/></div>
                   <div class="dm-preview">{{ conv.preview }}</div>
+                  <div class="tag-row" v-if="getActorTags(conv.partnerActor).length">
+                    <span class="tag-pill" v-for="t of getActorTags(conv.partnerActor).slice(0,3)" :key="t">{{ t }}</span>
+                    <span class="tag-more" v-if="getActorTags(conv.partnerActor).length > 3">···</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -197,11 +201,21 @@
           <template v-if="studySubTab==='join'">
             <div class="join-pane">
               <!-- Create form -->
-              <div class="join-create-bar">
-                <input class="field" style="flex:1" v-model="newGroupTitle" placeholder="New session name…" @keyup.enter="createGroup()"/>
-                <button class="btn btn-primary" @click="createGroup()" :disabled="!newGroupTitle.trim()||creatingGroup">
-                  {{ creatingGroup ? 'Creating…' : '+ Create' }}
-                </button>
+              <div class="join-create-form">
+                <div class="join-create-bar">
+                  <input class="field" style="flex:1" v-model="newGroupTitle" placeholder="New session name…" @keyup.enter="createGroup()"/>
+                  <button class="btn btn-primary" @click="createGroup()" :disabled="!newGroupTitle.trim()||creatingGroup">
+                    {{ creatingGroup ? 'Creating…' : '+ Create' }}
+                  </button>
+                </div>
+                <div class="tag-selector">
+                  <span class="field-label">Tags (optional)</span>
+                  <div class="tag-options">
+                    <button v-for="t of TAG_OPTIONS" :key="t"
+                      class="tag-option" :class="{selected: newGroupTags.includes(t)}"
+                      @click="toggleGroupTag(t)">{{ t }}</button>
+                  </div>
+                </div>
               </div>
               <!-- Session cards -->
               <div class="session-grid">
@@ -213,6 +227,9 @@
                   @click="selectGroup(g); studySubTab='session'"
                 >
                   <div class="session-card-title">{{ g.title }}</div>
+                  <div class="tag-row" v-if="g.tags && g.tags.length">
+                    <span class="tag-pill" v-for="t of g.tags" :key="t">{{ t }}</span>
+                  </div>
                   <div class="session-card-meta">
                     by {{ g.creatorName }}
                     <span v-if="g.isDummy" class="demo-tag">demo</span>
@@ -247,6 +264,9 @@
                     @click="selectGroup(g)"
                   >
                     <div class="group-title">{{ g.title }}</div>
+                    <div class="tag-row" v-if="g.tags && g.tags.length" style="margin:3px 0">
+                      <span class="tag-pill" v-for="t of g.tags" :key="t">{{ t }}</span>
+                    </div>
                     <div class="group-meta">
                       <em>by {{ g.creatorName }}</em>
                       <span v-if="g.isDummy" style="color:var(--amber-dim)"> · demo</span>
@@ -332,6 +352,14 @@
                   <label class="field-label">Bio</label>
                   <textarea class="field" v-model="profileDraft.bio" placeholder="A short bio…" rows="3" style="resize:none"></textarea>
                 </div>
+                <div>
+                  <label class="field-label">Classes</label>
+                  <div class="tag-options">
+                    <button v-for="t of TAG_OPTIONS" :key="t"
+                      class="tag-option" :class="{selected: profileDraft.tags && profileDraft.tags.includes(t)}"
+                      @click="toggleProfileTag(t)">{{ t }}</button>
+                  </div>
+                </div>
                 <div style="display:flex;gap:8px">
                   <button class="btn btn-primary btn-sm" @click="saveProfile()" :disabled="savingProfile">
                     {{ savingProfile ? 'Saving…' : 'Save' }}
@@ -389,6 +417,9 @@
         <div class="profile-modal-handle">
           <template v-if="viewingProfile.isDummy">demo account</template>
           <graffiti-actor-to-handle v-else :actor="viewingProfile.actor"/>
+        </div>
+        <div class="tag-row" v-if="viewingProfile.tags && viewingProfile.tags.length" style="justify-content:center">
+          <span class="tag-pill" v-for="t of viewingProfile.tags" :key="t">{{ t }}</span>
         </div>
         <div class="profile-modal-bio">{{ viewingProfile.bio || 'No bio set.' }}</div>
         <button

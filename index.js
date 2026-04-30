@@ -19,12 +19,14 @@ const MIN = 60_000;
 const HR  = 3_600_000;
 const DAY = 86_400_000;
 
+const TAG_OPTIONS = ["6.1800", "6.4500", "9.00", "6.C01", "6.767"];
+
 const DUMMY_PROFILES = [
-  { actor: "dummy-alex",   displayName: "Alex Chen",       bio: "2nd year MFA. Speculative & critical design." },
-  { actor: "dummy-sarah",  displayName: "Sarah Kim",        bio: "Researcher. Accessibility + inclusive design." },
-  { actor: "dummy-marcus", displayName: "Marcus Johnson",   bio: "Designer/dev. AI tools & creative agency." },
-  { actor: "dummy-jamie",  displayName: "Jamie Park",       bio: "1st year. Participatory co-design." },
-  { actor: "dummy-prof",   displayName: "Prof. DesignFTW",  bio: "Teaching design methods and critical theory." },
+  { actor: "dummy-alex",   displayName: "Alex Chen",       bio: "2nd year MFA. Speculative & critical design.", tags: ["6.1800", "6.C01"] },
+  { actor: "dummy-sarah",  displayName: "Sarah Kim",        bio: "Researcher. Accessibility + inclusive design.", tags: ["9.00", "6.4500"] },
+  { actor: "dummy-marcus", displayName: "Marcus Johnson",   bio: "Designer/dev. AI tools & creative agency.", tags: ["6.767", "6.1800"] },
+  { actor: "dummy-jamie",  displayName: "Jamie Park",       bio: "1st year. Participatory co-design.", tags: ["6.C01", "9.00", "6.4500"] },
+  { actor: "dummy-prof",   displayName: "Prof. DesignFTW",  bio: "Teaching design methods and critical theory.", tags: ["6.1800", "6.767", "6.C01"] },
 ];
 
 const DUMMY_DMS = [
@@ -73,9 +75,9 @@ const DUMMY_DM_MESSAGES = {
 };
 
 const DUMMY_GROUPS = [
-  { url: "dummy-grp-1", channel: "dummy-grp-ch-1", title: "HCI Midterm Review",        creatorName: "alex.chen",       published: NOW - HR,       isDummy: true },
-  { url: "dummy-grp-2", channel: "dummy-grp-ch-2", title: "Design Sprint #3 Debrief",  creatorName: "sarah.kim",       published: NOW - 3 * HR,   isDummy: true },
-  { url: "dummy-grp-3", channel: "dummy-grp-ch-3", title: "Thesis Proposal Workshop",  creatorName: "prof.designftw",  published: NOW - 2 * DAY,  isDummy: true },
+  { url: "dummy-grp-1", channel: "dummy-grp-ch-1", title: "HCI Midterm Review",        creatorName: "alex.chen",       published: NOW - HR,       isDummy: true, tags: ["6.1800"] },
+  { url: "dummy-grp-2", channel: "dummy-grp-ch-2", title: "Design Sprint #3 Debrief",  creatorName: "sarah.kim",       published: NOW - 3 * HR,   isDummy: true, tags: ["6.C01", "9.00"] },
+  { url: "dummy-grp-3", channel: "dummy-grp-ch-3", title: "Thesis Proposal Workshop",  creatorName: "prof.designftw",  published: NOW - 2 * DAY,  isDummy: true, tags: ["6.767"] },
 ];
 
 const DUMMY_GROUP_MESSAGES = {
@@ -190,11 +192,11 @@ function setup() {
         actor,
         displayName: profile.value.displayName,
         bio:         profile.value.bio || "",
+        tags:        profile.value.tags || [],
         isDummy:     profile.isDummy || false,
       };
     } else {
-      // Real user not yet loaded from Graffiti — show what we have
-      viewingProfile.value = { actor, displayName: actor, bio: "", isDummy: false };
+      viewingProfile.value = { actor, displayName: actor, bio: "", tags: [], isDummy: false };
     }
   }
 
@@ -232,7 +234,8 @@ function setup() {
           },
         },
       },
-    }
+    },
+    session  // needed to discover private (allowed) DM objects
   );
 
   const { objects: groupObjects } = useGraffitiDiscover(
@@ -283,7 +286,7 @@ function setup() {
           },
         },
       },
-      undefined,
+      session, // needed to discover private (allowed) DM messages
       true
     );
 
@@ -354,6 +357,7 @@ function setup() {
           created: Date.now(),
         },
         channels: [DMS_CHANNEL],
+        allowed: [me, partnerActor], // only the two participants can see this
       },
       session.value
     );
@@ -388,11 +392,13 @@ function setup() {
 
   // ── Study groups ───────────────────────────────────────────────
   const newGroupTitle = ref("");
+  const newGroupTags  = ref([]);
   const creatingGroup = ref(false);
 
   const realGroups = computed(() =>
     groupObjects.value.map(g => ({
       url: g.url, channel: g.value.channel, title: g.value.title,
+      tags: g.value.tags || [],
       creatorName: g.actor, published: g.value.published, isDummy: false,
     })).toSorted((a, b) => b.published - a.published)
   );
@@ -409,6 +415,7 @@ function setup() {
             type: "StudyGroup",
             channel: crypto.randomUUID(),
             title: newGroupTitle.value.trim(),
+            tags: newGroupTags.value,
             published: Date.now(),
           },
           channels: [STUDY_CHANNEL],
@@ -416,6 +423,7 @@ function setup() {
         session.value
       );
       newGroupTitle.value = "";
+      newGroupTags.value  = [];
     } finally {
       creatingGroup.value = false;
     }
@@ -471,7 +479,7 @@ function setup() {
 
   const dummyProfileObjs = DUMMY_PROFILES.map(p => ({
     actor: p.actor, isDummy: true,
-    value: { displayName: p.displayName, bio: p.bio, type: "Profile", published: 0 },
+    value: { displayName: p.displayName, bio: p.bio, tags: p.tags || [], type: "Profile", published: 0 },
   }));
 
   const allProfiles = computed(() => {
@@ -505,12 +513,13 @@ function setup() {
 
   const editingProfile = ref(false);
   const savingProfile  = ref(false);
-  const profileDraft   = ref({ displayName: "", bio: "" });
+  const profileDraft   = ref({ displayName: "", bio: "", tags: [] });
 
   function startEdit() {
     profileDraft.value = {
       displayName: myProfile.value?.value.displayName ?? "",
       bio:         myProfile.value?.value.bio ?? "",
+      tags:        [...(myProfile.value?.value.tags ?? [])],
     };
     editingProfile.value = true;
   }
@@ -526,6 +535,7 @@ function setup() {
             type:        "Profile",
             displayName: profileDraft.value.displayName.trim(),
             bio:         profileDraft.value.bio.trim(),
+            tags:        profileDraft.value.tags || [],
             published:   Date.now(),
           },
           channels: [PROFILES_CHANNEL],
@@ -536,6 +546,28 @@ function setup() {
     } finally {
       savingProfile.value = false;
     }
+  }
+
+  // Look up tags for any actor (used in DM list and profile modal)
+  function getActorTags(actor) {
+    if (!actor) return [];
+    const profile = allProfiles.value.find(p => p.actor === actor);
+    return profile?.value?.tags || [];
+  }
+
+  // Toggle a tag in the profile editor
+  function toggleProfileTag(tag) {
+    const tags = profileDraft.value.tags || [];
+    profileDraft.value.tags = tags.includes(tag)
+      ? tags.filter(t => t !== tag)
+      : [...tags, tag];
+  }
+
+  // Toggle a tag when creating a study session
+  function toggleGroupTag(tag) {
+    newGroupTags.value = newGroupTags.value.includes(tag)
+      ? newGroupTags.value.filter(t => t !== tag)
+      : [...newGroupTags.value, tag];
   }
 
   // ── Active messages ────────────────────────────────────────────
@@ -556,12 +588,24 @@ function setup() {
   const deleting = ref(new Set());
 
   async function send() {
-    const ch = tab.value === "chats" ? activeDMChannel.value : activeStudyChannel.value;
+    const isDM = tab.value === "chats";
+    const ch   = isDM ? activeDMChannel.value : activeStudyChannel.value;
     if (!draft.value.trim() || !ch) return;
     sending.value = true;
     try {
+      // For real DMs, restrict the message to sender + recipient only.
+      // Study group messages stay public (no allowed).
+      const allowed =
+        isDM && !activeDMIsDummy.value && activeDMPartnerActor.value
+          ? [session.value.actor, activeDMPartnerActor.value]
+          : undefined;
+
       await graffiti.post(
-        { value: { content: draft.value.trim(), published: Date.now() }, channels: [ch] },
+        {
+          value: { content: draft.value.trim(), published: Date.now() },
+          channels: [ch],
+          ...(allowed ? { allowed } : {}),
+        },
         session.value
       );
       draft.value = "";
@@ -599,13 +643,15 @@ function setup() {
 
   return {
     tab, setTab, studySubTab,
+    TAG_OPTIONS,
     viewingProfile, openProfile, closeProfile,
     showNewDM, dmSearch, filteredDMs, pickerResults,
     activeDMChannel, activeDMPartnerName, activeDMPartnerActor, activeDMIsDummy,
     selectDM, openOrCreateDM,
-    allGroups, newGroupTitle, creatingGroup, createGroup, selectGroup,
+    allGroups, newGroupTitle, newGroupTags, creatingGroup, createGroup, selectGroup,
     activeStudyChannel, activeStudyTitle, activeStudyIsDummy, suggestedTopics,
     myProfile, filteredProfiles, searchQ,
+    getActorTags, toggleProfileTag, toggleGroupTag,
     editingProfile, profileDraft, savingProfile, startEdit, saveProfile,
     activeMessages, messagesLoading,
     draft, sending, send,

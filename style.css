@@ -725,3 +725,48 @@ body {
   line-height: 1.6; text-align: center;
   margin: 4px 0 8px;
 }
+
+/* ── Tags ──────────────────────────────────────────────────────── */
+.tag-row {
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+}
+.tag-pill {
+  display: inline-flex; align-items: center;
+  font-size: 9.5px; font-weight: 700;
+  background: var(--crimson-lt);
+  color: var(--crimson);
+  border: 1px solid var(--crimson-md);
+  border-radius: var(--r-pill);
+  padding: 2px 7px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.tag-more {
+  font-size: 11px; color: var(--text-xdim); font-weight: 600; letter-spacing: .05em;
+}
+.tag-selector { display: flex; flex-direction: column; gap: 6px; }
+.tag-options  { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag-option {
+  font-family: var(--sans);
+  font-size: 11.5px; font-weight: 600;
+  border: 1.5px solid var(--border2);
+  border-radius: var(--r-pill);
+  padding: 4px 13px;
+  cursor: pointer;
+  background: var(--bg);
+  color: var(--text-dim);
+  transition: all .12s;
+  letter-spacing: .03em;
+}
+.tag-option:hover {
+  border-color: var(--crimson);
+  color: var(--crimson);
+  background: var(--crimson-tint);
+}
+.tag-option.selected {
+  background: var(--crimson);
+  border-color: var(--crimson);
+  color: #fff;
+}
+.join-create-form { display: flex; flex-direction: column; gap: 10px; flex-shrink: 0; }
