@@ -106,7 +106,7 @@
                 class="picker-item"
                 @click="openOrCreateDM(u.actor, u.displayName); showNewDM=false; dmSearch=''"
               >
-                <div class="picker-avatar">{{ u.displayName[0] }}</div>
+                <div class="picker-avatar" @click.stop="openProfile(u.actor)" style="cursor:pointer">{{ u.displayName[0] }}</div>
                 <div>
                   <div class="picker-name">{{ u.displayName }}</div>
                   <div class="picker-sub">{{ u.bio }}</div>
@@ -127,7 +127,7 @@
                 :class="{active: activeDMChannel===conv.channel}"
                 @click="selectDM(conv)"
               >
-                <div class="dm-avatar">{{ conv.partnerName[0].toUpperCase() }}</div>
+                <div class="dm-avatar" @click.stop="openProfile(conv.partnerActor)" style="cursor:pointer">{{ conv.partnerName[0].toUpperCase() }}</div>
                 <div class="dm-info">
                   <div class="dm-handle" v-if="conv.isDummy">{{ conv.partnerName }}</div>
                   <div class="dm-handle" v-else><graffiti-actor-to-handle :actor="conv.partnerActor"/></div>
@@ -169,6 +169,7 @@
                   :is-own="isMine(m)"
                   :is-deleting="deleting.has(m.url)"
                   @delete="del"
+                  @view-profile="openProfile"
                 />
               </template>
             </div>
@@ -284,6 +285,7 @@
                         :is-own="isMine(m)"
                         :is-deleting="deleting.has(m.url)"
                         @delete="del"
+                        @view-profile="openProfile"
                       />
                     </template>
                   </div>
@@ -354,7 +356,7 @@
                 {{ searchQ ? `No results for "${searchQ}"` : 'No profiles found.' }}
               </div>
               <div v-for="p of filteredProfiles" :key="p.actor" class="result-item">
-                <div class="result-avatar">{{ p.value.displayName[0] }}</div>
+                <div class="result-avatar" @click="openProfile(p.actor)" style="cursor:pointer">{{ p.value.displayName[0] }}</div>
                 <div class="result-info">
                   <div class="result-name">{{ p.value.displayName }}</div>
                   <div class="result-bio">{{ p.value.bio }}</div>
@@ -365,7 +367,7 @@
                 </div>
                 <button
                   class="btn btn-sm"
-                  @click="openOrCreateDM(p.actor, p.value.displayName); tab='chats'"
+                  @click="openOrCreateDM(p.actor, p.value.displayName); setTab('chats')"
                   :disabled="p.actor===$graffitiSession.value.actor"
                 >
                   Message
@@ -377,17 +379,49 @@
       </template>
 
     </div><!-- /shell -->
+
+    <!-- ── Profile Modal ──────────────────────────────────────────── -->
+    <div v-if="viewingProfile" class="profile-modal-overlay" @click.self="closeProfile()">
+      <div class="profile-modal">
+        <button class="profile-modal-close" @click="closeProfile()">✕</button>
+        <div class="profile-modal-avatar">{{ viewingProfile.displayName?.[0]?.toUpperCase() }}</div>
+        <div class="profile-modal-name">{{ viewingProfile.displayName }}</div>
+        <div class="profile-modal-handle">
+          <template v-if="viewingProfile.isDummy">demo account</template>
+          <graffiti-actor-to-handle v-else :actor="viewingProfile.actor"/>
+        </div>
+        <div class="profile-modal-bio">{{ viewingProfile.bio || 'No bio set.' }}</div>
+        <button
+          class="btn btn-primary btn-sm"
+          v-if="viewingProfile.actor !== $graffitiSession.value.actor"
+          @click="openOrCreateDM(viewingProfile.actor, viewingProfile.displayName); closeProfile(); setTab('chats')"
+        >
+          Message
+        </button>
+      </div>
+    </div>
+
   </template>
 
 </template>
 <!-- ── ChatMessage component template ───────────────────────────── -->
 <!-- Props: message (Object), isOwn (Boolean), isDeleting (Boolean) -->
-<!-- Emits: delete(message)                                          -->
+<!-- Emits: delete(message), view-profile(actor)                     -->
 <template id="chat-message-template">
   <div class="msg" :class="{own: isOwn}">
     <div class="msg-row">
-      <span class="msg-actor" v-if="message.isDummy">{{ message.senderName }}</span>
-      <span class="msg-actor" v-else><graffiti-actor-to-handle :actor="message.actor"/></span>
+      <span
+        class="msg-actor"
+        :style="(!isOwn && message.actor) ? 'cursor:pointer' : ''"
+        @click="(!isOwn && message.actor) ? $emit('view-profile', message.actor) : null"
+        v-if="message.isDummy"
+      >{{ message.senderName }}</span>
+      <span
+        class="msg-actor"
+        style="cursor:pointer"
+        @click="$emit('view-profile', message.actor)"
+        v-else
+      ><graffiti-actor-to-handle :actor="message.actor"/></span>
       <span class="msg-ts">{{ fmt(message.value.published) }}</span>
     </div>
     <div class="msg-bubble">{{ message.value.content }}</div>

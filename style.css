@@ -676,3 +676,52 @@ body {
   0%, 100% { opacity: .2; }
   50%       { opacity: .75; }
 }
+/* ── Profile Modal ─────────────────────────────────────────────── */
+.profile-modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.4);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 200;
+  animation: fadeUp .15s ease both;
+}
+.profile-modal {
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 32px 36px 28px;
+  width: 320px;
+  display: flex; flex-direction: column;
+  align-items: center; gap: 10px;
+  box-shadow: var(--shadow-md);
+  position: relative;
+}
+.profile-modal-close {
+  position: absolute; top: 14px; right: 14px;
+  background: transparent; border: none;
+  font-size: 16px; color: var(--text-dim);
+  cursor: pointer; line-height: 1;
+}
+.profile-modal-close:hover { color: var(--crimson); }
+.profile-modal-avatar {
+  width: 64px; height: 64px; border-radius: 50%;
+  background: var(--crimson-lt);
+  border: 2.5px solid var(--crimson-md);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 26px; font-weight: 700;
+  color: var(--crimson);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.profile-modal-name {
+  font-size: 18px; font-weight: 700;
+  color: var(--text); letter-spacing: -.01em;
+}
+.profile-modal-handle {
+  font-size: 12.5px; color: var(--crimson);
+  font-weight: 500;
+}
+.profile-modal-bio {
+  font-size: 13.5px; color: var(--text-mid);
+  line-height: 1.6; text-align: center;
+  margin: 4px 0 8px;
+}

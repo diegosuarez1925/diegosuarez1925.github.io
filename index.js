@@ -50,25 +50,25 @@ const DUMMY_DMS = [
 
 const DUMMY_DM_MESSAGES = {
   "dummy-ch-alex": [
-    { url: "d-a-1", isDummy: true, senderName: "Alex Chen",     isOwn: false, value: { content: "Hey! Did you finish the ethnography reading for Thursday?",       published: NOW - 55 * MIN } },
-    { url: "d-a-2", isDummy: true, senderName: "You",           isOwn: true,  value: { content: "Almost lol, the Geertz sections are so dense",                   published: NOW - 48 * MIN } },
-    { url: "d-a-3", isDummy: true, senderName: "Alex Chen",     isOwn: false, value: { content: "The cockfight essay took me three reads ngl",                    published: NOW - 44 * MIN } },
-    { url: "d-a-4", isDummy: true, senderName: "You",           isOwn: true,  value: { content: "Did Suri confirm the reading response is due Wednesday?",        published: NOW - 32 * MIN } },
-    { url: "d-a-5", isDummy: true, senderName: "Alex Chen",     isOwn: false, value: { content: "Yeah 11:59pm. I just started 😬",                               published: NOW - 28 * MIN } },
+    { url: "d-a-1", isDummy: true, actor: "dummy-alex", senderName: "Alex Chen",     isOwn: false, value: { content: "Hey! Did you finish the ethnography reading for Thursday?",       published: NOW - 55 * MIN } },
+    { url: "d-a-2", isDummy: true, actor: null,          senderName: "You",           isOwn: true,  value: { content: "Almost lol, the Geertz sections are so dense",                   published: NOW - 48 * MIN } },
+    { url: "d-a-3", isDummy: true, actor: "dummy-alex", senderName: "Alex Chen",     isOwn: false, value: { content: "The cockfight essay took me three reads ngl",                    published: NOW - 44 * MIN } },
+    { url: "d-a-4", isDummy: true, actor: null,          senderName: "You",           isOwn: true,  value: { content: "Did Suri confirm the reading response is due Wednesday?",        published: NOW - 32 * MIN } },
+    { url: "d-a-5", isDummy: true, actor: "dummy-alex", senderName: "Alex Chen",     isOwn: false, value: { content: "Yeah 11:59pm. I just started 😬",                               published: NOW - 28 * MIN } },
   ],
   "dummy-ch-sarah": [
-    { url: "d-s-1", isDummy: true, senderName: "Sarah Kim",     isOwn: false, value: { content: "Are you going to the design crit on Thursday?",                  published: NOW - 3 * HR } },
-    { url: "d-s-2", isDummy: true, senderName: "You",           isOwn: true,  value: { content: "Planning to! What time does it start?",                          published: NOW - 2.8 * HR } },
-    { url: "d-s-3", isDummy: true, senderName: "Sarah Kim",     isOwn: false, value: { content: "2pm in room 204. Bring your process work",                       published: NOW - 2 * HR } },
-    { url: "d-s-4", isDummy: true, senderName: "You",           isOwn: true,  value: { content: "Perfect, see you there!",                                        published: NOW - 1.9 * HR } },
-    { url: "d-s-5", isDummy: true, senderName: "Sarah Kim",     isOwn: false, value: { content: "Also — are you joining the accessibility reading group?",        published: NOW - 1.5 * HR } },
+    { url: "d-s-1", isDummy: true, actor: "dummy-sarah", senderName: "Sarah Kim",     isOwn: false, value: { content: "Are you going to the design crit on Thursday?",                  published: NOW - 3 * HR } },
+    { url: "d-s-2", isDummy: true, actor: null,           senderName: "You",           isOwn: true,  value: { content: "Planning to! What time does it start?",                          published: NOW - 2.8 * HR } },
+    { url: "d-s-3", isDummy: true, actor: "dummy-sarah", senderName: "Sarah Kim",     isOwn: false, value: { content: "2pm in room 204. Bring your process work",                       published: NOW - 2 * HR } },
+    { url: "d-s-4", isDummy: true, actor: null,           senderName: "You",           isOwn: true,  value: { content: "Perfect, see you there!",                                        published: NOW - 1.9 * HR } },
+    { url: "d-s-5", isDummy: true, actor: "dummy-sarah", senderName: "Sarah Kim",     isOwn: false, value: { content: "Also — are you joining the accessibility reading group?",        published: NOW - 1.5 * HR } },
   ],
   "dummy-ch-marcus": [
-    { url: "d-m-1", isDummy: true, senderName: "You",           isOwn: true,  value: { content: "Hey, do you have the slides from Tuesday's lecture?",            published: NOW - DAY - HR } },
-    { url: "d-m-2", isDummy: true, senderName: "Marcus Johnson",isOwn: false, value: { content: "Yes! One sec",                                                   published: NOW - DAY - 55 * MIN } },
-    { url: "d-m-3", isDummy: true, senderName: "Marcus Johnson",isOwn: false, value: { content: "Here you go → Lec_05_Methods.pdf",                               published: NOW - DAY - 50 * MIN } },
-    { url: "d-m-4", isDummy: true, senderName: "You",           isOwn: true,  value: { content: "You're a lifesaver, thank you",                                  published: NOW - DAY - 45 * MIN } },
-    { url: "d-m-5", isDummy: true, senderName: "Marcus Johnson",isOwn: false, value: { content: "Can you share your notes from yesterday's crit?",                published: NOW - DAY } },
+    { url: "d-m-1", isDummy: true, actor: null,           senderName: "You",           isOwn: true,  value: { content: "Hey, do you have the slides from Tuesday's lecture?",            published: NOW - DAY - HR } },
+    { url: "d-m-2", isDummy: true, actor: "dummy-marcus", senderName: "Marcus Johnson",isOwn: false, value: { content: "Yes! One sec",                                                   published: NOW - DAY - 55 * MIN } },
+    { url: "d-m-3", isDummy: true, actor: "dummy-marcus", senderName: "Marcus Johnson",isOwn: false, value: { content: "Here you go → Lec_05_Methods.pdf",                               published: NOW - DAY - 50 * MIN } },
+    { url: "d-m-4", isDummy: true, actor: null,           senderName: "You",           isOwn: true,  value: { content: "You're a lifesaver, thank you",                                  published: NOW - DAY - 45 * MIN } },
+    { url: "d-m-5", isDummy: true, actor: "dummy-marcus", senderName: "Marcus Johnson",isOwn: false, value: { content: "Can you share your notes from yesterday's crit?",                published: NOW - DAY } },
   ],
 };
 
@@ -80,27 +80,27 @@ const DUMMY_GROUPS = [
 
 const DUMMY_GROUP_MESSAGES = {
   "dummy-grp-ch-1": [
-    { url: "g1-1", isDummy: true, senderName: "alex.chen",      isOwn: false, value: { content: "Has anyone started the review sheet?",                               published: NOW - 2 * HR } },
-    { url: "g1-2", isDummy: true, senderName: "sarah.kim",      isOwn: false, value: { content: "I made a shared doc! Adding it to the group now",                   published: NOW - 1.8 * HR } },
-    { url: "g1-3", isDummy: true, senderName: "m.johnson",      isOwn: false, value: { content: "This chapter on affordances is definitely going to be on the exam", published: NOW - 1.5 * HR } },
-    { url: "g1-4", isDummy: true, senderName: "alex.chen",      isOwn: false, value: { content: "Norman's seven stages too — super testable",                        published: NOW - 1.2 * HR } },
-    { url: "g1-5", isDummy: true, senderName: "sarah.kim",      isOwn: false, value: { content: "Should we schedule a proper study session this weekend?",            published: NOW - HR } },
-    { url: "g1-6", isDummy: true, senderName: "m.johnson",      isOwn: false, value: { content: "Saturday afternoon works for me",                                   published: NOW - 55 * MIN } },
+    { url: "g1-1", isDummy: true, actor: "dummy-alex",   senderName: "alex.chen",      isOwn: false, value: { content: "Has anyone started the review sheet?",                               published: NOW - 2 * HR } },
+    { url: "g1-2", isDummy: true, actor: "dummy-sarah",  senderName: "sarah.kim",      isOwn: false, value: { content: "I made a shared doc! Adding it to the group now",                   published: NOW - 1.8 * HR } },
+    { url: "g1-3", isDummy: true, actor: "dummy-marcus", senderName: "m.johnson",      isOwn: false, value: { content: "This chapter on affordances is definitely going to be on the exam", published: NOW - 1.5 * HR } },
+    { url: "g1-4", isDummy: true, actor: "dummy-alex",   senderName: "alex.chen",      isOwn: false, value: { content: "Norman's seven stages too — super testable",                        published: NOW - 1.2 * HR } },
+    { url: "g1-5", isDummy: true, actor: "dummy-sarah",  senderName: "sarah.kim",      isOwn: false, value: { content: "Should we schedule a proper study session this weekend?",            published: NOW - HR } },
+    { url: "g1-6", isDummy: true, actor: "dummy-marcus", senderName: "m.johnson",      isOwn: false, value: { content: "Saturday afternoon works for me",                                   published: NOW - 55 * MIN } },
   ],
   "dummy-grp-ch-2": [
-    { url: "g2-1", isDummy: true, senderName: "sarah.kim",      isOwn: false, value: { content: "That was a tough sprint ngl",                                        published: NOW - 5 * HR } },
-    { url: "g2-2", isDummy: true, senderName: "m.johnson",      isOwn: false, value: { content: "I think our prototype came out really well though",                  published: NOW - 4.5 * HR } },
-    { url: "g2-3", isDummy: true, senderName: "alex.chen",      isOwn: false, value: { content: "The user feedback session was genuinely so helpful",                 published: NOW - 4 * HR } },
-    { url: "g2-4", isDummy: true, senderName: "sarah.kim",      isOwn: false, value: { content: "Agreed. Way better than peer review alone",                         published: NOW - 3.5 * HR } },
-    { url: "g2-5", isDummy: true, senderName: "m.johnson",      isOwn: false, value: { content: "Who's writing the reflection doc?",                                 published: NOW - 3 * HR } },
+    { url: "g2-1", isDummy: true, actor: "dummy-sarah",  senderName: "sarah.kim",      isOwn: false, value: { content: "That was a tough sprint ngl",                                        published: NOW - 5 * HR } },
+    { url: "g2-2", isDummy: true, actor: "dummy-marcus", senderName: "m.johnson",      isOwn: false, value: { content: "I think our prototype came out really well though",                  published: NOW - 4.5 * HR } },
+    { url: "g2-3", isDummy: true, actor: "dummy-alex",   senderName: "alex.chen",      isOwn: false, value: { content: "The user feedback session was genuinely so helpful",                 published: NOW - 4 * HR } },
+    { url: "g2-4", isDummy: true, actor: "dummy-sarah",  senderName: "sarah.kim",      isOwn: false, value: { content: "Agreed. Way better than peer review alone",                         published: NOW - 3.5 * HR } },
+    { url: "g2-5", isDummy: true, actor: "dummy-marcus", senderName: "m.johnson",      isOwn: false, value: { content: "Who's writing the reflection doc?",                                 published: NOW - 3 * HR } },
   ],
   "dummy-grp-ch-3": [
-    { url: "g3-1", isDummy: true, senderName: "prof.designftw", isOwn: false, value: { content: "Welcome everyone! Let's start by sharing our research questions",    published: NOW - 3 * DAY } },
-    { url: "g3-2", isDummy: true, senderName: "m.johnson",      isOwn: false, value: { content: "Mine is about how AI tools affect creative agency in design",        published: NOW - 3 * DAY + 10 * MIN } },
-    { url: "g3-3", isDummy: true, senderName: "jamie.park",     isOwn: false, value: { content: "I'm exploring participatory methods in community-centered design",   published: NOW - 3 * DAY + 20 * MIN } },
-    { url: "g3-4", isDummy: true, senderName: "prof.designftw", isOwn: false, value: { content: "Great threads. Let's dig into research framing next week",           published: NOW - 3 * DAY + 30 * MIN } },
-    { url: "g3-5", isDummy: true, senderName: "alex.chen",      isOwn: false, value: { content: "Should we share our literature maps before the session?",            published: NOW - 2 * DAY } },
-    { url: "g3-6", isDummy: true, senderName: "prof.designftw", isOwn: false, value: { content: "Yes, please post them to the channel by Tuesday",                   published: NOW - DAY - 6 * HR } },
+    { url: "g3-1", isDummy: true, actor: "dummy-prof",   senderName: "prof.designftw", isOwn: false, value: { content: "Welcome everyone! Let's start by sharing our research questions",    published: NOW - 3 * DAY } },
+    { url: "g3-2", isDummy: true, actor: "dummy-marcus", senderName: "m.johnson",      isOwn: false, value: { content: "Mine is about how AI tools affect creative agency in design",        published: NOW - 3 * DAY + 10 * MIN } },
+    { url: "g3-3", isDummy: true, actor: "dummy-jamie",  senderName: "jamie.park",     isOwn: false, value: { content: "I'm exploring participatory methods in community-centered design",   published: NOW - 3 * DAY + 20 * MIN } },
+    { url: "g3-4", isDummy: true, actor: "dummy-prof",   senderName: "prof.designftw", isOwn: false, value: { content: "Great threads. Let's dig into research framing next week",           published: NOW - 3 * DAY + 30 * MIN } },
+    { url: "g3-5", isDummy: true, actor: "dummy-alex",   senderName: "alex.chen",      isOwn: false, value: { content: "Should we share our literature maps before the session?",            published: NOW - 2 * DAY } },
+    { url: "g3-6", isDummy: true, actor: "dummy-prof",   senderName: "prof.designftw", isOwn: false, value: { content: "Yes, please post them to the channel by Tuesday",                   published: NOW - DAY - 6 * HR } },
   ],
 };
 
@@ -123,7 +123,7 @@ const ChatMessage = {
     isOwn:      { type: Boolean, default: false },
     isDeleting: { type: Boolean, default: false },
   },
-  emits: ["delete"],
+  emits: ["delete", "view-profile"],
   setup() {
     function fmt(ts) {
       if (!ts) return "";
@@ -179,6 +179,28 @@ function setup() {
   }
 
   const studySubTab = ref("join");
+
+  // ── Profile modal ──────────────────────────────────────────────
+  const viewingProfile = ref(null);
+
+  function openProfile(actor) {
+    const profile = allProfiles.value.find(p => p.actor === actor);
+    if (profile) {
+      viewingProfile.value = {
+        actor,
+        displayName: profile.value.displayName,
+        bio:         profile.value.bio || "",
+        isDummy:     profile.isDummy || false,
+      };
+    } else {
+      // Real user not yet loaded from Graffiti — show what we have
+      viewingProfile.value = { actor, displayName: actor, bio: "", isDummy: false };
+    }
+  }
+
+  function closeProfile() {
+    viewingProfile.value = null;
+  }
 
   // ── Active chat state ──────────────────────────────────────────
   const activeDMChannel      = ref(null);
@@ -577,6 +599,7 @@ function setup() {
 
   return {
     tab, setTab, studySubTab,
+    viewingProfile, openProfile, closeProfile,
     showNewDM, dmSearch, filteredDMs, pickerResults,
     activeDMChannel, activeDMPartnerName, activeDMPartnerActor, activeDMIsDummy,
     selectDM, openOrCreateDM,
