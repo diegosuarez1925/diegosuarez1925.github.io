@@ -337,8 +337,10 @@ function setup() {
     );
 
   // ── DMs ────────────────────────────────────────────────────────
-  const showNewDM = ref(false);
-  const dmSearch  = ref("");
+  const showNewDM       = ref(false);
+  const dmSearch        = ref("");
+  const dmTagFilter     = ref([]);
+  const dmTagDropdown   = ref("");
 
   const realDMs = computed(() => {
     if (!session.value) return [];
@@ -362,13 +364,38 @@ function setup() {
 
   const filteredDMs = computed(() => {
     const q = dmSearch.value.toLowerCase().trim();
-    if (!q) return allDMs.value;
+    const tagsF = dmTagFilter.value;
     return allDMs.value.filter(d => {
-      if (d.partnerName.toLowerCase().includes(q)) return true;
-      const tags = getActorTags(d.partnerActor);
-      return tags.some(t => t.toLowerCase().includes(q));
+      // text search across partner name (and tag substrings, for back-compat)
+      if (q) {
+        const nameMatch = d.partnerName.toLowerCase().includes(q);
+        const tagSubMatch = getActorTags(d.partnerActor)
+          .some(t => t.toLowerCase().includes(q));
+        if (!nameMatch && !tagSubMatch) return false;
+      }
+      // tag dropdown filter (must have at least one of the selected tags)
+      if (tagsF.length) {
+        const tags = getActorTags(d.partnerActor);
+        if (!tagsF.some(t => tags.includes(t))) return false;
+      }
+      return true;
     });
   });
+
+  // Tag dropdown helpers for DMs (mirror the Study filter helpers)
+  const availableDmTags = computed(() =>
+    TAG_OPTIONS.filter(t => !dmTagFilter.value.includes(t))
+  );
+  function addDmTag() {
+    const t = dmTagDropdown.value;
+    if (t && !dmTagFilter.value.includes(t)) {
+      dmTagFilter.value = [...dmTagFilter.value, t];
+    }
+    dmTagDropdown.value = "";
+  }
+  function removeDmTag(t) {
+    dmTagFilter.value = dmTagFilter.value.filter(x => x !== t);
+  }
 
   function selectDM(conv) {
     activeDMChannel.value      = conv.channel;
@@ -820,18 +847,23 @@ function setup() {
 
   const pickerResults = computed(() => {
     const q = dmSearch.value.toLowerCase().trim();
+    const tagsF = dmTagFilter.value;
     const all = allProfiles.value.map(p => ({
       actor: p.actor,
       displayName: p.value.displayName,
       bio: p.value.bio || "",
       tags: p.value.tags || [],
     }));
-    if (!q) return all;
-    return all.filter(u =>
-      u.displayName.toLowerCase().includes(q) ||
-      u.bio.toLowerCase().includes(q) ||
-      u.tags.some(t => t.toLowerCase().includes(q))
-    );
+    return all.filter(u => {
+      if (q) {
+        const matches = u.displayName.toLowerCase().includes(q) ||
+                        u.bio.toLowerCase().includes(q) ||
+                        u.tags.some(t => t.toLowerCase().includes(q));
+        if (!matches) return false;
+      }
+      if (tagsF.length && !tagsF.some(t => u.tags.includes(t))) return false;
+      return true;
+    });
   });
 
   const editingProfile = ref(false);
@@ -992,10 +1024,24 @@ function setup() {
       maxZoom: 19,
     }).addTo(joinMap);
     refreshJoinMarkers();
+    // Leaflet sometimes lays out before the container finishes sizing
+    // (especially on the very first navigation). Retry a few times so
+    // tiles always paint correctly.
+    [0, 60, 250, 600].forEach(d => setTimeout(() => {
+      if (joinMap) joinMap.invalidateSize();
+    }, d));
+    // Also re-measure if the container resizes (e.g. window resize).
+    if (window.ResizeObserver && !joinMap._roAttached) {
+      const ro = new ResizeObserver(() => { if (joinMap) joinMap.invalidateSize(); });
+      ro.observe(el);
+      joinMap._ro = ro;
+      joinMap._roAttached = true;
+    }
   }
 
   function tearDownJoinMap() {
     if (!joinMap) return;
+    if (joinMap._ro) { joinMap._ro.disconnect(); joinMap._ro = null; }
     joinMapMarkers.forEach(m => m.remove());
     joinMapMarkers.length = 0;
     joinMap.remove();
@@ -1048,6 +1094,9 @@ function setup() {
     createMap.on("click", (e) => {
       placeCreateMarker(e.latlng.lat, e.latlng.lng, true);
     });
+    [0, 60, 250, 600].forEach(d => setTimeout(() => {
+      if (createMap) createMap.invalidateSize();
+    }, d));
   }
 
   function tearDownCreateMap() {
@@ -1105,9 +1154,12 @@ function setup() {
       if (oldVal === "join")   tearDownJoinMap();
       if (oldVal === "create") tearDownCreateMap();
       await nextTick();
+      // Two ticks helps when v-if templates have just been mounted.
+      await nextTick();
       if (val === "join")   initJoinMap();
       if (val === "create") initCreateMap();
-    }
+    },
+    { immediate: true }
   );
 
   // Update Join markers whenever filtered list changes.
@@ -1132,6 +1184,7 @@ function setup() {
     TAG_OPTIONS,
     viewingProfile, openProfile, closeProfile,
     showNewDM, dmSearch, filteredDMs, pickerResults,
+    dmTagFilter, dmTagDropdown, addDmTag, removeDmTag, availableDmTags,
     activeDMChannel, activeDMPartnerName, activeDMPartnerActor, activeDMIsDummy,
     selectDM, openOrCreateDM,
     // study groups

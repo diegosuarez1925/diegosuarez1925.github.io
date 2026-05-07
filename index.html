@@ -13,7 +13,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
           crossorigin=""></script>
-  <link rel="stylesheet" href="style.css?v=5"/>
+  <link rel="stylesheet" href="style.css?v=7"/>
   <script type="importmap">
   {
     "imports": {
@@ -25,7 +25,7 @@
     }
   }
   </script>
-  <script src="index.js?v=7" type="module"></script>
+  <script src="index.js?v=8" type="module"></script>
 </head>
 <body>
 <div id="app"><div style="height:100vh;display:flex;align-items:center;justify-content:center;color:#585048;font-family:monospace;font-size:13px">Loading…</div></div>
@@ -98,8 +98,20 @@
               <input
                 class="search-field"
                 v-model="dmSearch"
-                :placeholder="showNewDM ? 'Find by name or tag (e.g. 6.1800)…' : 'Search by name or tag (e.g. 6.1800)…'"
+                :placeholder="showNewDM ? 'Find by name…' : 'Search by name…'"
               />
+            </div>
+            <div class="dm-tag-filter">
+              <select class="field" v-model="dmTagDropdown" @change="addDmTag()">
+                <option value="">+ Filter by class tag…</option>
+                <option v-for="t of availableDmTags" :key="t" :value="t">{{ t }}</option>
+              </select>
+              <div class="tag-row" v-if="dmTagFilter.length" style="margin-top:6px">
+                <span class="tag-pill removable" v-for="t of dmTagFilter" :key="t">
+                  {{ t }}
+                  <button class="tag-remove" @click="removeDmTag(t)" aria-label="Remove tag">×</button>
+                </span>
+              </div>
             </div>
           </div>
 
@@ -248,42 +260,45 @@
                   </div>
                 </div>
               </div>
-              <!-- Map of sessions -->
-              <div class="join-map-wrap">
-                <div class="join-map-header">
-                  <span class="join-map-title">Sessions on the map</span>
-                  <span class="join-map-sub">Showing {{ filteredGroups.filter(g => g.pinLat != null && g.pinLng != null).length }} of {{ filteredGroups.length }} matching sessions · click a pin for details</span>
+              <!-- Split: list on left, map on right -->
+              <div class="join-split">
+                <div class="join-list-col">
+                  <div class="session-grid two-col">
+                    <div v-if="allGroups.length===0" class="join-empty">No sessions yet. Head to <strong>Create</strong> to make one.</div>
+                    <div v-else-if="filteredGroups.length===0" class="join-empty">
+                      No sessions match your filters.
+                    </div>
+                    <div
+                      v-for="g of filteredGroups" :key="g.url"
+                      class="session-card"
+                      :class="{joined: isMemberOf(g)}"
+                      @click="viewSession(g)"
+                    >
+                      <div class="session-card-title">{{ g.title }}</div>
+                      <div class="tag-row" v-if="g.tags && g.tags.length">
+                        <span class="tag-pill" v-for="t of g.tags" :key="t">{{ t }}</span>
+                      </div>
+                      <div class="session-card-when" v-if="g.date || g.startTime">
+                        <span v-if="g.date">{{ fmtDate(g.date) }}</span>
+                        <span v-if="g.startTime"> · {{ fmtTime(g.startTime) }}<span v-if="g.endTime">–{{ fmtTime(g.endTime) }}</span></span>
+                      </div>
+                      <div class="session-card-where" v-if="g.location">📍 {{ g.location }}</div>
+                      <div class="session-card-meta">
+                        by {{ getActorDisplayName(g.creatorActor) || g.creatorName }}
+                        <span v-if="g.isDummy" class="demo-tag">demo</span>
+                      </div>
+                      <div class="session-card-action">
+                        {{ isMemberOf(g) ? 'Open details →' : 'View · Join →' }}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div id="join-map" class="map-container"></div>
-              </div>
-              <!-- Session cards -->
-              <div class="session-grid">
-                <div v-if="allGroups.length===0" class="join-empty">No sessions yet. Head to <strong>Create</strong> to make one.</div>
-                <div v-else-if="filteredGroups.length===0" class="join-empty">
-                  No sessions match your filters.
-                </div>
-                <div
-                  v-for="g of filteredGroups" :key="g.url"
-                  class="session-card"
-                  :class="{joined: isMemberOf(g)}"
-                  @click="viewSession(g)"
-                >
-                  <div class="session-card-title">{{ g.title }}</div>
-                  <div class="tag-row" v-if="g.tags && g.tags.length">
-                    <span class="tag-pill" v-for="t of g.tags" :key="t">{{ t }}</span>
+                <div class="join-map-col">
+                  <div class="join-map-header">
+                    <span class="join-map-title">Sessions on the map</span>
+                    <span class="join-map-sub">{{ filteredGroups.filter(g => g.pinLat != null && g.pinLng != null).length }} / {{ filteredGroups.length }} pinned · click a pin for details</span>
                   </div>
-                  <div class="session-card-when" v-if="g.date || g.startTime">
-                    <span v-if="g.date">{{ fmtDate(g.date) }}</span>
-                    <span v-if="g.startTime"> · {{ fmtTime(g.startTime) }}<span v-if="g.endTime">–{{ fmtTime(g.endTime) }}</span></span>
-                  </div>
-                  <div class="session-card-where" v-if="g.location">📍 {{ g.location }}</div>
-                  <div class="session-card-meta">
-                    by {{ getActorDisplayName(g.creatorActor) || g.creatorName }}
-                    <span v-if="g.isDummy" class="demo-tag">demo</span>
-                  </div>
-                  <div class="session-card-action">
-                    {{ isMemberOf(g) ? 'Open details →' : 'View · Join →' }}
-                  </div>
+                  <div id="join-map" class="map-container map-container--fill"></div>
                 </div>
               </div>
             </div>

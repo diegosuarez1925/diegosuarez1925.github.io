@@ -614,7 +614,6 @@ body {
 .join-create-bar { display: flex; gap: 10px; align-items: center; flex-shrink: 0; }
 
 .session-grid {
-  flex: 1; overflow-y: auto;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   grid-auto-rows: min-content; gap: 14px; align-content: start;
@@ -789,6 +788,10 @@ body {
 }
 .tag-remove:hover { background: var(--crimson-md); color: var(--crimson-dark); }
 
+/* DM sidebar tag filter dropdown */
+.dm-tag-filter { display: flex; flex-direction: column; }
+.dm-tag-filter .field { font-size: 12.5px; padding: 7px 11px; }
+
 /* ── Maps (Leaflet) ────────────────────────────────────────────── */
 .map-container {
   width: 100%;
@@ -800,11 +803,32 @@ body {
   z-index: 0;
 }
 .map-container--small { height: 260px; }
+.map-container--fill  { flex: 1; height: auto; min-height: 240px; }
 .leaflet-container { font-family: var(--sans); }
 
-.join-map-wrap {
-  display: flex; flex-direction: column; gap: 8px;
+/* Side-by-side layout: session list on the left, map on right.
+   Uses clamp() so the map column is always present (never stacks) but
+   shrinks gracefully as the viewport narrows (e.g. at high browser zoom). */
+.join-split {
+  flex: 1;
+  display: flex;
+  gap: 14px;
+  min-height: 0;
+  overflow: hidden;
+}
+.join-list-col {
+  flex: 1; min-width: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.join-map-col {
+  /* Min 220px keeps the map readable at heavy zoom; max 380px keeps it
+     from dominating on wide screens; preferred 32% of available width. */
+  width: clamp(220px, 32%, 380px);
   flex-shrink: 0;
+  display: flex; flex-direction: column;
+  gap: 8px;
+  min-height: 0;
 }
 .join-map-header {
   display: flex; align-items: baseline; justify-content: space-between;
@@ -820,9 +844,20 @@ body {
   font-size: 11.5px; color: var(--text-dim);
 }
 
-/* The Join pane should scroll as a whole now (map at top, list below) */
-.join-pane { overflow-y: auto !important; }
-.join-pane .session-grid { flex: none; overflow: visible; }
+/* Session grid in the left column: auto-fills cards based on real
+   available width, so it goes from 2-up to 1-up smoothly without a
+   hard breakpoint that breaks the side-by-side layout. */
+.session-grid.two-col {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+.session-card { padding: 14px 16px; }
+.session-card-title { font-size: 13.5px; }
+
+/* Tighten outer padding at narrow widths so both columns still fit */
+@media (max-width: 720px) {
+  .join-pane { padding: 16px 14px; }
+  .join-split { gap: 10px; }
+}
 
 /* ── Pin field status (Create form) ────────────────────────────── */
 .field-hint {
