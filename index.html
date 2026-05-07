@@ -7,7 +7,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
-  <link rel="stylesheet" href="style.css?v=2"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+          crossorigin=""></script>
+  <link rel="stylesheet" href="style.css?v=5"/>
   <script type="importmap">
   {
     "imports": {
@@ -19,7 +25,7 @@
     }
   }
   </script>
-  <script src="index.js?v=4" type="module"></script>
+  <script src="index.js?v=7" type="module"></script>
 </head>
 <body>
 <div id="app"><div style="height:100vh;display:flex;align-items:center;justify-content:center;color:#585048;font-family:monospace;font-size:13px">Loading…</div></div>
@@ -92,7 +98,7 @@
               <input
                 class="search-field"
                 v-model="dmSearch"
-                :placeholder="showNewDM ? 'Find someone…' : 'Search chats…'"
+                :placeholder="showNewDM ? 'Find by name or tag (e.g. 6.1800)…' : 'Search by name or tag (e.g. 6.1800)…'"
               />
             </div>
           </div>
@@ -194,48 +200,164 @@
           <!-- Study sub-tabs -->
           <nav class="study-subtabs">
             <button class="subtab-btn" :class="{active: studySubTab==='join'}"    @click="studySubTab='join'">Join</button>
+            <button class="subtab-btn" :class="{active: studySubTab==='create'}"  @click="studySubTab='create'">Create</button>
             <button class="subtab-btn" :class="{active: studySubTab==='session'}" @click="studySubTab='session'">Session Chats</button>
           </nav>
 
           <!-- ── JOIN sub-tab ─────────────────────────────────── -->
           <template v-if="studySubTab==='join'">
             <div class="join-pane">
-              <!-- Create form -->
-              <div class="join-create-form">
-                <div class="join-create-bar">
-                  <input class="field" style="flex:1" v-model="newGroupTitle" placeholder="New session name…" @keyup.enter="createGroup()"/>
-                  <button class="btn btn-primary" @click="createGroup()" :disabled="!newGroupTitle.trim()||creatingGroup">
-                    {{ creatingGroup ? 'Creating…' : '+ Create' }}
-                  </button>
+              <!-- Filter panel -->
+              <div class="filter-panel">
+                <div class="filter-row">
+                  <div class="search-wrap" style="flex:1">
+                    <span class="search-icon">⌕</span>
+                    <input
+                      class="search-field"
+                      v-model="studySearch"
+                      placeholder="Search by keywords in title or description…"
+                    />
+                  </div>
+                  <button class="btn btn-sm" @click="clearStudyFilters()">Clear</button>
                 </div>
-                <div class="tag-selector">
-                  <span class="field-label">Tags (optional)</span>
-                  <div class="tag-options">
-                    <button v-for="t of TAG_OPTIONS" :key="t"
-                      class="tag-option" :class="{selected: newGroupTags.includes(t)}"
-                      @click="toggleGroupTag(t)">{{ t }}</button>
+                <div class="filter-grid">
+                  <div class="filter-cell">
+                    <label class="field-label">Class tags</label>
+                    <select class="field" v-model="filterTagDropdown" @change="addFilterTag()">
+                      <option value="">+ Add a class tag…</option>
+                      <option v-for="t of availableFilterTags" :key="t" :value="t">{{ t }}</option>
+                    </select>
+                    <div class="tag-row" v-if="studyTagFilter.length" style="margin-top:6px">
+                      <span class="tag-pill removable" v-for="t of studyTagFilter" :key="t">
+                        {{ t }}
+                        <button class="tag-remove" @click="removeFilterTag(t)" aria-label="Remove tag">×</button>
+                      </span>
+                    </div>
+                  </div>
+                  <div class="filter-cell">
+                    <label class="field-label">Date</label>
+                    <input class="field" type="date" v-model="studyDateFilter"/>
+                  </div>
+                  <div class="filter-cell">
+                    <label class="field-label">Starts by</label>
+                    <input class="field" type="time" v-model="studyStartsBy"/>
+                  </div>
+                  <div class="filter-cell">
+                    <label class="field-label">Ends by</label>
+                    <input class="field" type="time" v-model="studyEndsBy"/>
                   </div>
                 </div>
               </div>
+              <!-- Map of sessions -->
+              <div class="join-map-wrap">
+                <div class="join-map-header">
+                  <span class="join-map-title">Sessions on the map</span>
+                  <span class="join-map-sub">Showing {{ filteredGroups.filter(g => g.pinLat != null && g.pinLng != null).length }} of {{ filteredGroups.length }} matching sessions · click a pin for details</span>
+                </div>
+                <div id="join-map" class="map-container"></div>
+              </div>
               <!-- Session cards -->
               <div class="session-grid">
-                <div v-if="allGroups.length===0" class="join-empty">No sessions yet. Create one above.</div>
+                <div v-if="allGroups.length===0" class="join-empty">No sessions yet. Head to <strong>Create</strong> to make one.</div>
+                <div v-else-if="filteredGroups.length===0" class="join-empty">
+                  No sessions match your filters.
+                </div>
                 <div
-                  v-for="g of allGroups" :key="g.url"
+                  v-for="g of filteredGroups" :key="g.url"
                   class="session-card"
-                  :class="{joined: activeStudyChannel===g.channel}"
-                  @click="selectGroup(g); studySubTab='session'"
+                  :class="{joined: isMemberOf(g)}"
+                  @click="viewSession(g)"
                 >
                   <div class="session-card-title">{{ g.title }}</div>
                   <div class="tag-row" v-if="g.tags && g.tags.length">
                     <span class="tag-pill" v-for="t of g.tags" :key="t">{{ t }}</span>
                   </div>
+                  <div class="session-card-when" v-if="g.date || g.startTime">
+                    <span v-if="g.date">{{ fmtDate(g.date) }}</span>
+                    <span v-if="g.startTime"> · {{ fmtTime(g.startTime) }}<span v-if="g.endTime">–{{ fmtTime(g.endTime) }}</span></span>
+                  </div>
+                  <div class="session-card-where" v-if="g.location">📍 {{ g.location }}</div>
                   <div class="session-card-meta">
-                    by {{ g.creatorName }}
+                    by {{ getActorDisplayName(g.creatorActor) || g.creatorName }}
                     <span v-if="g.isDummy" class="demo-tag">demo</span>
                   </div>
                   <div class="session-card-action">
-                    {{ activeStudyChannel===g.channel ? 'Open chat →' : 'Join →' }}
+                    {{ isMemberOf(g) ? 'Open details →' : 'View · Join →' }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- ── CREATE sub-tab ───────────────────────────────── -->
+          <template v-else-if="studySubTab==='create'">
+            <div class="create-pane">
+              <div class="create-card">
+                <h2 class="create-heading">Create a Study Session</h2>
+                <p class="create-sub">Fill in the details below. Fields marked with * are required.</p>
+
+                <div class="form-stack">
+                  <div>
+                    <label class="field-label">Title *</label>
+                    <input class="field" v-model="newGroupTitle" placeholder="e.g. 6.1800 Pset 4 study group"/>
+                  </div>
+                  <div>
+                    <label class="field-label">Description *</label>
+                    <textarea class="field" v-model="newGroupDescription" rows="3" style="resize:vertical"
+                      placeholder="What will you cover? What should attendees bring?"></textarea>
+                  </div>
+                  <div>
+                    <label class="field-label">Class tags (optional)</label>
+                    <select class="field" v-model="newGroupTagDropdown" @change="addCreateTag()">
+                      <option value="">+ Add a class tag…</option>
+                      <option v-for="t of availableCreateTags" :key="t" :value="t">{{ t }}</option>
+                    </select>
+                    <div class="tag-row" v-if="newGroupTags.length" style="margin-top:6px">
+                      <span class="tag-pill removable" v-for="t of newGroupTags" :key="t">
+                        {{ t }}
+                        <button class="tag-remove" @click="removeCreateTag(t)" aria-label="Remove tag">×</button>
+                      </span>
+                    </div>
+                  </div>
+                  <div class="form-row-3">
+                    <div>
+                      <label class="field-label">Date *</label>
+                      <input class="field" type="date" v-model="newGroupDate"/>
+                    </div>
+                    <div>
+                      <label class="field-label">Start time *</label>
+                      <input class="field" type="time" v-model="newGroupStartTime"/>
+                    </div>
+                    <div>
+                      <label class="field-label">End time *</label>
+                      <input class="field" type="time" v-model="newGroupEndTime"/>
+                    </div>
+                  </div>
+                  <div>
+                    <label class="field-label">Location *</label>
+                    <input class="field" v-model="newGroupLocation" placeholder="e.g. Building 32, Room 144 — or a link"/>
+                  </div>
+                  <div>
+                    <label class="field-label">Pin *</label>
+                    <p class="field-hint">Click anywhere on the map to drop a pin, or drag the existing pin to fine-tune.</p>
+                    <div id="create-map" class="map-container map-container--small"></div>
+                    <div class="pin-status">
+                      <template v-if="newGroupPinLat != null && newGroupPinLng != null">
+                        <div class="pin-status-row">
+                          <span class="pin-coord">📍 {{ newGroupPinLat.toFixed(5) }}, {{ newGroupPinLng.toFixed(5) }}</span>
+                          <button class="btn btn-xs" @click="clearCreatePin()">Clear pin</button>
+                        </div>
+                        <div class="pin-address" v-if="newGroupPinAddress">{{ newGroupPinAddress }}</div>
+                      </template>
+                      <span class="pin-empty" v-else>No pin set yet — click on the map above.</span>
+                    </div>
+                  </div>
+                  <div v-if="createError" class="create-error">{{ createError }}</div>
+                  <div style="display:flex;gap:8px">
+                    <button class="btn btn-primary" @click="createGroup()" :disabled="creatingGroup">
+                      {{ creatingGroup ? 'Creating…' : 'Create Session' }}
+                    </button>
+                    <button class="btn btn-sm" @click="studySubTab='join'">Cancel</button>
                   </div>
                 </div>
               </div>
@@ -253,13 +375,24 @@
                     <span class="sidebar-title">My Sessions</span>
                     <button class="btn btn-xs" @click="studySubTab='join'">+ Join</button>
                   </div>
+                  <div class="search-wrap">
+                    <span class="search-icon">⌕</span>
+                    <input
+                      class="search-field"
+                      v-model="studySearch"
+                      placeholder="Search by name or tag…"
+                    />
+                  </div>
                 </div>
                 <div class="sidebar-list">
-                  <div v-if="allGroups.length===0" class="sidebar-empty">
-                    No sessions yet.<br/>Go to <strong>Join</strong> to find one.
+                  <div v-if="myJoinedGroups.length===0" class="sidebar-empty">
+                    You haven't joined any sessions yet.<br/>Go to <strong>Join</strong> to find one.
+                  </div>
+                  <div v-else-if="myJoinedGroupsFiltered.length===0" class="sidebar-empty">
+                    No matches for "{{ studySearch }}".
                   </div>
                   <div
-                    v-for="g of allGroups" :key="g.url"
+                    v-for="g of myJoinedGroupsFiltered" :key="g.url"
                     class="group-item" :class="{active: activeStudyChannel===g.channel}"
                     @click="selectGroup(g)"
                   >
@@ -268,8 +401,8 @@
                       <span class="tag-pill" v-for="t of g.tags" :key="t">{{ t }}</span>
                     </div>
                     <div class="group-meta">
-                      <em>by {{ g.creatorName }}</em>
-                      <span v-if="g.isDummy" style="color:var(--amber-dim)"> · demo</span>
+                      <em>by {{ getActorDisplayName(g.creatorActor) || g.creatorName }}</em>
+                      <span v-if="g.isDummy" style="color:var(--text-dim)"> · demo</span>
                     </div>
                   </div>
                 </div>
@@ -407,6 +540,82 @@
       </template>
 
     </div><!-- /shell -->
+
+    <!-- ── Session Details Modal ──────────────────────────────────── -->
+    <div v-if="viewingSession" class="profile-modal-overlay" @click.self="closeViewSession()">
+      <div class="profile-modal session-modal">
+        <button class="profile-modal-close" @click="closeViewSession()">✕</button>
+        <div class="session-modal-title">{{ viewingSession.title }}</div>
+        <div class="tag-row" v-if="viewingSession.tags && viewingSession.tags.length" style="justify-content:center;margin-bottom:6px">
+          <span class="tag-pill" v-for="t of viewingSession.tags" :key="t">{{ t }}</span>
+        </div>
+
+        <div class="session-modal-grid">
+          <div class="session-modal-row" v-if="viewingSession.date">
+            <span class="session-modal-label">Date</span>
+            <span class="session-modal-val">{{ fmtDate(viewingSession.date) }}</span>
+          </div>
+          <div class="session-modal-row" v-if="viewingSession.startTime || viewingSession.endTime">
+            <span class="session-modal-label">Time</span>
+            <span class="session-modal-val">
+              <template v-if="viewingSession.startTime">{{ fmtTime(viewingSession.startTime) }}</template>
+              <template v-if="viewingSession.startTime && viewingSession.endTime"> – </template>
+              <template v-if="viewingSession.endTime">{{ fmtTime(viewingSession.endTime) }}</template>
+            </span>
+          </div>
+          <div class="session-modal-row" v-if="viewingSession.location">
+            <span class="session-modal-label">Location</span>
+            <span class="session-modal-val">{{ viewingSession.location }}</span>
+          </div>
+          <div class="session-modal-row" v-if="viewingSession.pinAddress">
+            <span class="session-modal-label">Address</span>
+            <span class="session-modal-val">{{ viewingSession.pinAddress }}</span>
+          </div>
+          <div class="session-modal-row">
+            <span class="session-modal-label">Organizer</span>
+            <span class="session-modal-val">
+              {{ getActorDisplayName(viewingSession.creatorActor) || viewingSession.creatorName }}
+              <span v-if="viewingSession.isDummy" class="demo-tag">demo</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="session-modal-section" v-if="viewingSession.description">
+          <div class="session-modal-section-title">About</div>
+          <div class="session-modal-desc">{{ viewingSession.description }}</div>
+        </div>
+
+        <div class="session-modal-section">
+          <div class="session-modal-section-title">
+            Joined ({{ getSessionMembers(viewingSession).length }})
+          </div>
+          <div class="member-list">
+            <div
+              v-for="actor of getSessionMembers(viewingSession)" :key="actor"
+              class="member-chip"
+              @click="openProfile(actor)"
+            >
+              <div class="member-avatar">{{ (getActorDisplayName(actor) || '?')[0].toUpperCase() }}</div>
+              <span class="member-name">{{ getActorDisplayName(actor) }}</span>
+              <span class="member-role" v-if="actor === viewingSession.creatorActor">organizer</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="session-modal-actions">
+          <button
+            class="btn btn-primary"
+            @click="joinSession(viewingSession)"
+            :disabled="joiningGroup"
+          >
+            <template v-if="isMemberOf(viewingSession)">Open Chat →</template>
+            <template v-else-if="viewingSession.isDummy">Open Demo Chat →</template>
+            <template v-else>{{ joiningGroup ? 'Joining…' : 'Join Session' }}</template>
+          </button>
+          <button class="btn btn-sm" @click="closeViewSession()">Close</button>
+        </div>
+      </div>
+    </div>
 
     <!-- ── Profile Modal ──────────────────────────────────────────── -->
     <div v-if="viewingProfile" class="profile-modal-overlay" @click.self="closeProfile()">

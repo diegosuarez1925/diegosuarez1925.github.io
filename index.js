@@ -1,4 +1,4 @@
-import { createApp, ref, computed, watch } from "vue";
+import { createApp, ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from "vue";
 import { createRouter, createWebHashHistory } from "vue-router";
 import { GraffitiDecentralized } from "@graffiti-garden/implementation-decentralized";
 import {
@@ -9,9 +9,10 @@ import {
 } from "@graffiti-garden/wrapper-vue";
 
 // ── Channel namespaces ─────────────────────────────────────────────
-const DMS_CHANNEL      = "designftw-26-dms";
-const STUDY_CHANNEL    = "designftw-26-study";
-const PROFILES_CHANNEL = "designftw-26-profiles";
+const DMS_CHANNEL              = "designftw-26-dms";
+const STUDY_CHANNEL            = "designftw-26-study";
+const STUDY_MEMBERSHIPS_CHANNEL = "designftw-26-study-memberships";
+const PROFILES_CHANNEL         = "designftw-26-profiles";
 
 // ── Dummy seed data ────────────────────────────────────────────────
 const NOW = Date.now();
@@ -74,11 +75,56 @@ const DUMMY_DM_MESSAGES = {
   ],
 };
 
+const _isoDate = (ms) => new Date(ms).toISOString().slice(0, 10);
+const TODAY_STR     = _isoDate(NOW);
+const TOMORROW_STR  = _isoDate(NOW + DAY);
+const NEXT_WEEK_STR = _isoDate(NOW + 7 * DAY);
+
 const DUMMY_GROUPS = [
-  { url: "dummy-grp-1", channel: "dummy-grp-ch-1", title: "HCI Midterm Review",        creatorName: "alex.chen",       published: NOW - HR,       isDummy: true, tags: ["6.1800"] },
-  { url: "dummy-grp-2", channel: "dummy-grp-ch-2", title: "Design Sprint #3 Debrief",  creatorName: "sarah.kim",       published: NOW - 3 * HR,   isDummy: true, tags: ["6.C01", "9.00"] },
-  { url: "dummy-grp-3", channel: "dummy-grp-ch-3", title: "Thesis Proposal Workshop",  creatorName: "prof.designftw",  published: NOW - 2 * DAY,  isDummy: true, tags: ["6.767"] },
+  {
+    url: "dummy-grp-1", channel: "dummy-grp-ch-1",
+    title: "HCI Midterm Review",
+    description: "Group review for the upcoming HCI midterm. We'll go through Norman's design principles, the seven stages of action, and practice past exam problems together.",
+    creatorName: "alex.chen", creatorActor: "dummy-alex",
+    published: NOW - HR, isDummy: true,
+    tags: ["6.1800"],
+    date: TODAY_STR, startTime: "14:00", endTime: "16:00",
+    location: "Building 32, Room 144",
+    pinLat: 42.36174, pinLng: -71.09102,
+    pinAddress: "Stata Center (Building 32), 32 Vassar St, Cambridge, MA",
+    dummyMembers: ["dummy-alex", "dummy-sarah", "dummy-marcus"],
+  },
+  {
+    url: "dummy-grp-2", channel: "dummy-grp-ch-2",
+    title: "Design Sprint #3 Debrief",
+    description: "Reflect on our third design sprint, share insights from user testing, and plan improvements for the next iteration.",
+    creatorName: "sarah.kim", creatorActor: "dummy-sarah",
+    published: NOW - 3 * HR, isDummy: true,
+    tags: ["6.C01", "9.00"],
+    date: TOMORROW_STR, startTime: "10:00", endTime: "11:30",
+    location: "Studio Lab, E15-310",
+    pinLat: 42.36031, pinLng: -71.08715,
+    pinAddress: "MIT Media Lab (E15), 75 Amherst St, Cambridge, MA",
+    dummyMembers: ["dummy-sarah", "dummy-jamie"],
+  },
+  {
+    url: "dummy-grp-3", channel: "dummy-grp-ch-3",
+    title: "Thesis Proposal Workshop",
+    description: "Workshop your thesis proposals with feedback from peers and the professor. Bring drafts of research questions and a one-page summary.",
+    creatorName: "prof.designftw", creatorActor: "dummy-prof",
+    published: NOW - 2 * DAY, isDummy: true,
+    tags: ["6.767"],
+    date: NEXT_WEEK_STR, startTime: "13:00", endTime: "15:00",
+    location: "Hayden Library, Room 1",
+    pinLat: 42.35930, pinLng: -71.09200,
+    pinAddress: "Hayden Library, 160 Memorial Dr, Cambridge, MA",
+    dummyMembers: ["dummy-prof", "dummy-marcus", "dummy-jamie", "dummy-alex"],
+  },
 ];
+
+// MIT campus center, used as the default map view
+const MIT_CENTER = [42.3601, -71.0942];
+const MIT_ZOOM   = 16;
 
 const DUMMY_GROUP_MESSAGES = {
   "dummy-grp-ch-1": [
@@ -317,7 +363,11 @@ function setup() {
   const filteredDMs = computed(() => {
     const q = dmSearch.value.toLowerCase().trim();
     if (!q) return allDMs.value;
-    return allDMs.value.filter(d => d.partnerName.toLowerCase().includes(q));
+    return allDMs.value.filter(d => {
+      if (d.partnerName.toLowerCase().includes(q)) return true;
+      const tags = getActorTags(d.partnerActor);
+      return tags.some(t => t.toLowerCase().includes(q));
+    });
   });
 
   function selectDM(conv) {
@@ -391,42 +441,313 @@ function setup() {
   );
 
   // ── Study groups ───────────────────────────────────────────────
-  const newGroupTitle = ref("");
-  const newGroupTags  = ref([]);
-  const creatingGroup = ref(false);
+  // Create form state
+  const newGroupTitle       = ref("");
+  const newGroupDescription = ref("");
+  const newGroupTags        = ref([]);
+  const newGroupDate        = ref("");
+  const newGroupStartTime   = ref("");
+  const newGroupEndTime     = ref("");
+  const newGroupLocation    = ref("");
+  const newGroupTagDropdown = ref("");
+  const newGroupPinLat      = ref(null);
+  const newGroupPinLng      = ref(null);
+  const newGroupPinAddress  = ref("");
+  const creatingGroup       = ref(false);
+  const createError         = ref("");
+
+  // Leaflet map state
+  let joinMap          = null;
+  let createMap        = null;
+  let createMapMarker  = null;
+  const joinMapMarkers = [];
+
+  // Filter state for the Join sub-tab
+  const studySearch     = ref("");
+  const studyTagFilter  = ref([]);
+  const studyDateFilter = ref("");
+  const studyStartsBy   = ref("");
+  const studyEndsBy     = ref("");
+  const filterTagDropdown = ref("");
+
+  // Modal state
+  const viewingSession = ref(null);
+  const joiningGroup   = ref(false);
+
+  // Memberships (who has joined which session)
+  const { objects: membershipObjects } = useGraffitiDiscover(
+    [STUDY_MEMBERSHIPS_CHANNEL],
+    {
+      properties: {
+        value: {
+          required: ["type", "sessionChannel", "joinedAt"],
+          properties: {
+            type:           { const: "StudyMembership" },
+            sessionChannel: { type: "string" },
+            joinedAt:       { type: "number" },
+          },
+        },
+      },
+    }
+  );
 
   const realGroups = computed(() =>
     groupObjects.value.map(g => ({
       url: g.url, channel: g.value.channel, title: g.value.title,
+      description: g.value.description || "",
       tags: g.value.tags || [],
-      creatorName: g.actor, published: g.value.published, isDummy: false,
+      date: g.value.date || "",
+      startTime: g.value.startTime || "",
+      endTime: g.value.endTime || "",
+      location: g.value.location || "",
+      pinLat:     typeof g.value.pinLat     === "number" ? g.value.pinLat     : null,
+      pinLng:     typeof g.value.pinLng     === "number" ? g.value.pinLng     : null,
+      pinAddress: g.value.pinAddress || "",
+      creatorName: g.actor, creatorActor: g.actor,
+      published: g.value.published, isDummy: false,
     })).toSorted((a, b) => b.published - a.published)
   );
 
   const allGroups = computed(() => [...realGroups.value, ...DUMMY_GROUPS]);
 
+  // Compute members of a session: dummyMembers (for demos) + real memberships
+  // + the creator (auto-joined). Returns array of actor identifiers.
+  function getSessionMembers(group) {
+    const set = new Set();
+    if (group.creatorActor) set.add(group.creatorActor);
+    if (group.isDummy && Array.isArray(group.dummyMembers)) {
+      group.dummyMembers.forEach(a => set.add(a));
+    }
+    membershipObjects.value
+      .filter(m => m.value.sessionChannel === group.channel)
+      .forEach(m => set.add(m.actor));
+    return [...set];
+  }
+
+  // Did the current user join this session?
+  function isMemberOf(group) {
+    if (!group) return false;
+    const me = session.value?.actor;
+    if (!me) return false;
+    if (group.creatorActor === me) return true;
+    return membershipObjects.value.some(
+      m => m.actor === me && m.value.sessionChannel === group.channel
+    );
+  }
+
+  const filteredGroups = computed(() => {
+    const q = studySearch.value.toLowerCase().trim();
+    const tagsF  = studyTagFilter.value;
+    const dateF  = studyDateFilter.value;
+    const sBy    = studyStartsBy.value;
+    const eBy    = studyEndsBy.value;
+    return allGroups.value.filter(g => {
+      // text search across title and description
+      if (q) {
+        const inTitle = g.title.toLowerCase().includes(q);
+        const inDesc  = (g.description || "").toLowerCase().includes(q);
+        if (!inTitle && !inDesc) return false;
+      }
+      // class tags filter (match any selected tag)
+      if (tagsF.length) {
+        const tags = g.tags || [];
+        if (!tagsF.some(t => tags.includes(t))) return false;
+      }
+      // date filter
+      if (dateF && g.date !== dateF) return false;
+      // starts-by filter — session starts at or before this time
+      if (sBy && (!g.startTime || g.startTime > sBy)) return false;
+      // ends-by filter — session ends at or before this time
+      if (eBy && (!g.endTime || g.endTime > eBy)) return false;
+      return true;
+    });
+  });
+
+  // Sessions that the current user has joined or created (used for the
+  // "My Sessions" sidebar in the Session Chats sub-tab). Demo sessions
+  // are always visible so users can browse the chats without joining.
+  const myJoinedGroups = computed(() => {
+    return allGroups.value.filter(g => g.isDummy || isMemberOf(g));
+  });
+
+  // The My Sessions sidebar reuses the Join keyword search.
+  const myJoinedGroupsFiltered = computed(() => {
+    const q = studySearch.value.toLowerCase().trim();
+    if (!q) return myJoinedGroups.value;
+    return myJoinedGroups.value.filter(g => {
+      if (g.title.toLowerCase().includes(q)) return true;
+      if ((g.description || "").toLowerCase().includes(q)) return true;
+      return (g.tags || []).some(t => t.toLowerCase().includes(q));
+    });
+  });
+
   async function createGroup() {
-    if (!newGroupTitle.value.trim()) return;
+    createError.value = "";
+    if (!newGroupTitle.value.trim())       { createError.value = "Title is required.";       return; }
+    if (!newGroupDescription.value.trim()) { createError.value = "Description is required."; return; }
+    if (!newGroupDate.value)               { createError.value = "Date is required.";        return; }
+    if (!newGroupStartTime.value)          { createError.value = "Start time is required.";  return; }
+    if (!newGroupEndTime.value)            { createError.value = "End time is required.";    return; }
+    if (!newGroupLocation.value.trim())    { createError.value = "Location is required.";    return; }
+    if (newGroupEndTime.value <= newGroupStartTime.value) {
+      createError.value = "End time must be after start time."; return;
+    }
+    if (newGroupPinLat.value == null || newGroupPinLng.value == null) {
+      createError.value = "Drop a pin on the map to set the session location."; return;
+    }
     creatingGroup.value = true;
     try {
+      const channel = crypto.randomUUID();
       await graffiti.post(
         {
           value: {
             type: "StudyGroup",
-            channel: crypto.randomUUID(),
-            title: newGroupTitle.value.trim(),
-            tags: newGroupTags.value,
-            published: Date.now(),
+            channel,
+            title:       newGroupTitle.value.trim(),
+            description: newGroupDescription.value.trim(),
+            tags:        newGroupTags.value,
+            date:        newGroupDate.value,
+            startTime:   newGroupStartTime.value,
+            endTime:     newGroupEndTime.value,
+            location:    newGroupLocation.value.trim(),
+            pinLat:      newGroupPinLat.value,
+            pinLng:      newGroupPinLng.value,
+            pinAddress:  newGroupPinAddress.value || "",
+            published:   Date.now(),
           },
           channels: [STUDY_CHANNEL],
         },
         session.value
       );
-      newGroupTitle.value = "";
-      newGroupTags.value  = [];
+      // reset form
+      newGroupTitle.value       = "";
+      newGroupDescription.value = "";
+      newGroupTags.value        = [];
+      newGroupDate.value        = "";
+      newGroupStartTime.value   = "";
+      newGroupEndTime.value     = "";
+      newGroupLocation.value    = "";
+      newGroupTagDropdown.value = "";
+      newGroupPinLat.value      = null;
+      newGroupPinLng.value      = null;
+      newGroupPinAddress.value  = "";
+      if (createMapMarker) { createMapMarker.remove(); createMapMarker = null; }
+      // jump to Join so the user can see their new session
+      studySubTab.value = "join";
     } finally {
       creatingGroup.value = false;
     }
+  }
+
+  // Click a session card in Join → open the details modal
+  function viewSession(group) {
+    viewingSession.value = group;
+  }
+
+  function closeViewSession() {
+    viewingSession.value = null;
+  }
+
+  // Post a membership for the current user (no-op for dummies / already-joined).
+  async function joinSession(group) {
+    if (!session.value) return;
+    if (group.isDummy) {
+      // demo sessions: just open the chat
+      selectGroup(group);
+      closeViewSession();
+      return;
+    }
+    if (isMemberOf(group)) {
+      selectGroup(group);
+      closeViewSession();
+      return;
+    }
+    joiningGroup.value = true;
+    try {
+      await graffiti.post(
+        {
+          value: {
+            type:           "StudyMembership",
+            sessionChannel: group.channel,
+            sessionUrl:     group.url,
+            joinedAt:       Date.now(),
+          },
+          channels: [STUDY_MEMBERSHIPS_CHANNEL],
+        },
+        session.value
+      );
+      selectGroup(group);
+      closeViewSession();
+    } finally {
+      joiningGroup.value = false;
+    }
+  }
+
+  // Reset all Join filters
+  function clearStudyFilters() {
+    studySearch.value     = "";
+    studyTagFilter.value  = [];
+    studyDateFilter.value = "";
+    studyStartsBy.value   = "";
+    studyEndsBy.value     = "";
+    filterTagDropdown.value = "";
+  }
+
+  // Tag dropdown helpers
+  function addCreateTag() {
+    const t = newGroupTagDropdown.value;
+    if (t && !newGroupTags.value.includes(t)) {
+      newGroupTags.value = [...newGroupTags.value, t];
+    }
+    newGroupTagDropdown.value = "";
+  }
+  function removeCreateTag(t) {
+    newGroupTags.value = newGroupTags.value.filter(x => x !== t);
+  }
+  function addFilterTag() {
+    const t = filterTagDropdown.value;
+    if (t && !studyTagFilter.value.includes(t)) {
+      studyTagFilter.value = [...studyTagFilter.value, t];
+    }
+    filterTagDropdown.value = "";
+  }
+  function removeFilterTag(t) {
+    studyTagFilter.value = studyTagFilter.value.filter(x => x !== t);
+  }
+
+  // Available options remaining (not already selected)
+  const availableCreateTags = computed(() =>
+    TAG_OPTIONS.filter(t => !newGroupTags.value.includes(t))
+  );
+  const availableFilterTags = computed(() =>
+    TAG_OPTIONS.filter(t => !studyTagFilter.value.includes(t))
+  );
+
+  // Find a profile/display-name for any actor (real or dummy)
+  function getActorDisplayName(actor) {
+    if (!actor) return "Unknown";
+    const profile = allProfiles.value.find(p => p.actor === actor);
+    if (profile?.value?.displayName) return profile.value.displayName;
+    // fall back to a short version of the raw actor string
+    if (actor.startsWith("dummy-")) return actor.replace(/^dummy-/, "");
+    return actor;
+  }
+
+  // Pretty-print a YYYY-MM-DD as e.g. "Wed, May 6"
+  function fmtDate(s) {
+    if (!s) return "";
+    const [y, m, d] = s.split("-").map(Number);
+    if (!y || !m || !d) return s;
+    const dt = new Date(y, m - 1, d);
+    return dt.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  }
+  // Pretty-print HH:MM (24h) as "2:00 PM"
+  function fmtTime(s) {
+    if (!s) return "";
+    const [h, m] = s.split(":").map(Number);
+    if (Number.isNaN(h)) return s;
+    const dt = new Date(); dt.setHours(h, m || 0, 0, 0);
+    return dt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   }
 
   function selectGroup(g) {
@@ -503,11 +824,13 @@ function setup() {
       actor: p.actor,
       displayName: p.value.displayName,
       bio: p.value.bio || "",
+      tags: p.value.tags || [],
     }));
     if (!q) return all;
     return all.filter(u =>
       u.displayName.toLowerCase().includes(q) ||
-      u.bio.toLowerCase().includes(q)
+      u.bio.toLowerCase().includes(q) ||
+      u.tags.some(t => t.toLowerCase().includes(q))
     );
   });
 
@@ -641,6 +964,169 @@ function setup() {
     return today ? time : d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + time;
   }
 
+  // ── Leaflet maps ───────────────────────────────────────────────
+  // Fix the default Leaflet marker icon URLs (they point to local
+  // assets by default; we serve from the unpkg CDN instead).
+  function patchLeafletIcons() {
+    if (!window.L || window.__leafletIconsPatched) return;
+    const proto = window.L.Icon.Default.prototype;
+    delete proto._getIconUrl;
+    window.L.Icon.Default.mergeOptions({
+      iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+      iconUrl:       "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+      shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+    });
+    window.__leafletIconsPatched = true;
+  }
+
+  // Initialise the Join map and seed pins for the current filter.
+  function initJoinMap() {
+    if (!window.L) return;
+    patchLeafletIcons();
+    const el = document.getElementById("join-map");
+    if (!el || joinMap) return;
+    joinMap = window.L.map(el, { scrollWheelZoom: true })
+      .setView(MIT_CENTER, MIT_ZOOM);
+    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors",
+      maxZoom: 19,
+    }).addTo(joinMap);
+    refreshJoinMarkers();
+  }
+
+  function tearDownJoinMap() {
+    if (!joinMap) return;
+    joinMapMarkers.forEach(m => m.remove());
+    joinMapMarkers.length = 0;
+    joinMap.remove();
+    joinMap = null;
+  }
+
+  // Sync the pins on the Join map with whatever filteredGroups currently is.
+  function refreshJoinMarkers() {
+    if (!joinMap || !window.L) return;
+    joinMapMarkers.forEach(m => m.remove());
+    joinMapMarkers.length = 0;
+    for (const g of filteredGroups.value) {
+      if (g.pinLat == null || g.pinLng == null) continue;
+      const marker = window.L.marker([g.pinLat, g.pinLng]).addTo(joinMap);
+      const subtitle = [
+        g.date ? fmtDate(g.date) : "",
+        g.startTime ? fmtTime(g.startTime) : "",
+      ].filter(Boolean).join(" · ");
+      marker.bindTooltip(`<strong>${escapeHtml(g.title)}</strong>${subtitle ? `<br/>${escapeHtml(subtitle)}` : ""}`, {
+        direction: "top", offset: [0, -16],
+      });
+      marker.on("click", () => viewSession(g));
+      joinMapMarkers.push(marker);
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s ?? "").replace(/[&<>"']/g, ch => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[ch]));
+  }
+
+  // Initialise the Create-form pin picker map.
+  function initCreateMap() {
+    if (!window.L) return;
+    patchLeafletIcons();
+    const el = document.getElementById("create-map");
+    if (!el || createMap) return;
+    const center = (newGroupPinLat.value != null && newGroupPinLng.value != null)
+      ? [newGroupPinLat.value, newGroupPinLng.value] : MIT_CENTER;
+    createMap = window.L.map(el, { scrollWheelZoom: true })
+      .setView(center, MIT_ZOOM);
+    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap contributors",
+      maxZoom: 19,
+    }).addTo(createMap);
+    if (newGroupPinLat.value != null && newGroupPinLng.value != null) {
+      placeCreateMarker(newGroupPinLat.value, newGroupPinLng.value, false);
+    }
+    createMap.on("click", (e) => {
+      placeCreateMarker(e.latlng.lat, e.latlng.lng, true);
+    });
+  }
+
+  function tearDownCreateMap() {
+    if (!createMap) return;
+    if (createMapMarker) { createMapMarker.remove(); createMapMarker = null; }
+    createMap.remove();
+    createMap = null;
+  }
+
+  function placeCreateMarker(lat, lng, doGeocode) {
+    if (!createMap || !window.L) return;
+    if (createMapMarker) {
+      createMapMarker.setLatLng([lat, lng]);
+    } else {
+      createMapMarker = window.L.marker([lat, lng], { draggable: true }).addTo(createMap);
+      createMapMarker.on("dragend", (e) => {
+        const ll = e.target.getLatLng();
+        newGroupPinLat.value = ll.lat;
+        newGroupPinLng.value = ll.lng;
+        reverseGeocode(ll.lat, ll.lng);
+      });
+    }
+    newGroupPinLat.value = lat;
+    newGroupPinLng.value = lng;
+    if (doGeocode) reverseGeocode(lat, lng);
+  }
+
+  // Optional: ask Nominatim for a human-readable address. Best-effort.
+  async function reverseGeocode(lat, lng) {
+    const fallback = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    newGroupPinAddress.value = fallback;
+    try {
+      const r = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+        { headers: { Accept: "application/json" } }
+      );
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data?.display_name) newGroupPinAddress.value = data.display_name;
+    } catch { /* network errors are non-fatal */ }
+  }
+
+  function clearCreatePin() {
+    newGroupPinLat.value = null;
+    newGroupPinLng.value = null;
+    newGroupPinAddress.value = "";
+    if (createMapMarker) { createMapMarker.remove(); createMapMarker = null; }
+  }
+
+  // Init/tear down maps as the user moves between sub-tabs.
+  // Only fires when both: tab === "study" and the relevant sub-tab is active.
+  watch(
+    () => (tab.value === "study" ? studySubTab.value : null),
+    async (val, oldVal) => {
+      if (oldVal === "join")   tearDownJoinMap();
+      if (oldVal === "create") tearDownCreateMap();
+      await nextTick();
+      if (val === "join")   initJoinMap();
+      if (val === "create") initCreateMap();
+    }
+  );
+
+  // Update Join markers whenever filtered list changes.
+  watch(filteredGroups, () => {
+    if (joinMap) refreshJoinMarkers();
+  });
+
+  // Try to init the Join map on first mount if user lands directly there.
+  onMounted(async () => {
+    await nextTick();
+    if (tab.value === "study" && studySubTab.value === "join")  initJoinMap();
+    if (tab.value === "study" && studySubTab.value === "create") initCreateMap();
+  });
+
+  onBeforeUnmount(() => {
+    tearDownJoinMap();
+    tearDownCreateMap();
+  });
+
   return {
     tab, setTab, studySubTab,
     TAG_OPTIONS,
@@ -648,7 +1134,21 @@ function setup() {
     showNewDM, dmSearch, filteredDMs, pickerResults,
     activeDMChannel, activeDMPartnerName, activeDMPartnerActor, activeDMIsDummy,
     selectDM, openOrCreateDM,
-    allGroups, newGroupTitle, newGroupTags, creatingGroup, createGroup, selectGroup,
+    // study groups
+    allGroups, filteredGroups, myJoinedGroups, myJoinedGroupsFiltered,
+    studySearch, studyTagFilter, studyDateFilter, studyStartsBy, studyEndsBy,
+    filterTagDropdown, addFilterTag, removeFilterTag, availableFilterTags,
+    clearStudyFilters,
+    // session create form
+    newGroupTitle, newGroupDescription, newGroupTags, newGroupDate,
+    newGroupStartTime, newGroupEndTime, newGroupLocation,
+    newGroupTagDropdown, addCreateTag, removeCreateTag, availableCreateTags,
+    newGroupPinLat, newGroupPinLng, newGroupPinAddress, clearCreatePin,
+    creatingGroup, createError, createGroup, selectGroup,
+    // session details modal
+    viewingSession, viewSession, closeViewSession, joinSession, joiningGroup,
+    isMemberOf, getSessionMembers, getActorDisplayName,
+    fmtDate, fmtTime,
     activeStudyChannel, activeStudyTitle, activeStudyIsDummy, suggestedTopics,
     myProfile, filteredProfiles, searchQ,
     getActorTags, toggleProfileTag, toggleGroupTag,
