@@ -6,7 +6,24 @@ import {
   useGraffiti,
   useGraffitiSession,
   useGraffitiDiscover,
+  useGraffitiActorToHandle,
 } from "@graffiti-garden/wrapper-vue";
+
+// ── ActorHandle: resolves an actor URL to a handle and strips the
+//    ".graffiti.actor" suffix so "uname.graffiti.actor" → "uname"
+const ActorHandle = {
+  name: "ActorHandle",
+  props: { actor: { type: String, required: true } },
+  setup(props) {
+    const { handle } = useGraffitiActorToHandle(() => props.actor);
+    const clean = computed(() => {
+      if (!handle.value) return handle.value; // null = not found, undefined = loading
+      return handle.value.replace(/\.graffiti\.actor$/i, "");
+    });
+    return { clean };
+  },
+  template: `<span>{{ clean ?? actor }}</span>`,
+};
 
 // ── Channel namespaces ─────────────────────────────────────────────
 const DMS_CHANNEL              = "designftw-26-dms";
@@ -122,7 +139,6 @@ const DUMMY_GROUPS = [
   },
 ];
 
-// MIT campus center, used as the default map view
 const MIT_CENTER = [42.3601, -71.0942];
 const MIT_ZOOM   = 16;
 
@@ -158,12 +174,6 @@ const SUGGESTED_TOPICS = [
 ];
 
 // ── ChatMessage component ──────────────────────────────────────────
-// Renders a single message bubble with sender, timestamp, content,
-// and an optional delete button for messages the current user owns.
-// Props:   message    – the message object
-//          isOwn      – true if the current user sent this message
-//          isDeleting – true while the delete request is in flight
-// Emits:   delete(message)
 const ChatMessage = {
   template: "#chat-message-template",
   props: {
@@ -185,11 +195,6 @@ const ChatMessage = {
 };
 
 // ── Router ─────────────────────────────────────────────────────────
-// IMPORTANT: Vue Router requires every non-redirect route to have a
-// `component` property — routes without one are silently skipped and
-// router.push() never updates the URL.
-// Our app renders via v-if in the main template (not via <router-view>),
-// so we give each route a tiny NullView that renders nothing.
 const NullView = { template: "<span></span>" };
 
 const router = createRouter({
@@ -209,9 +214,6 @@ function setup() {
   const graffiti = useGraffiti();
   const session  = useGraffitiSession();
 
-  // tab is derived from the current route name.
-  // We read router.currentRoute directly (a reactive ref on the router
-  // object) — this is more reliable in CDN setups than useRoute().
   const tab = computed(() => {
     const name = router.currentRoute.value.name;
     if (name === "chats" || name === "chat")        return "chats";
@@ -227,6 +229,30 @@ function setup() {
   }
 
   const studySubTab = ref("join");
+
+  // ── Toast notifications ────────────────────────────────────────
+  const toastMsg = ref("");
+  let toastTimer = null;
+  function showToast(msg, duration = 2500) {
+    toastMsg.value = msg;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toastMsg.value = ""; }, duration);
+  }
+
+  // ── Study filter panel collapse state ─────────────────────────
+  const filterCollapsed = ref(true);
+
+  // ── Expired session auto-filter ────────────────────────────────
+  const hideExpired = ref(true);
+
+  function isSessionExpired(g) {
+    if (!g.date) return false;
+    const endTime = g.endTime || "23:59";
+    const [y, m, d] = g.date.split("-").map(Number);
+    const [h, mn] = endTime.split(":").map(Number);
+    if (!y || !m || !d) return false;
+    return new Date(y, m - 1, d, h, mn || 0).getTime() < Date.now();
+  }
 
   // ── Profile modal ──────────────────────────────────────────────
   const viewingProfile = ref(null);
@@ -281,7 +307,7 @@ function setup() {
         },
       },
     },
-    session  // needed to discover private (allowed) DM objects
+    session
   );
 
   const { objects: groupObjects } = useGraffitiDiscover(
@@ -332,7 +358,7 @@ function setup() {
           },
         },
       },
-      session, // needed to discover private (allowed) DM messages
+      session,
       true
     );
 
@@ -341,6 +367,9 @@ function setup() {
   const dmSearch        = ref("");
   const dmTagFilter     = ref([]);
   const dmTagDropdown   = ref("");
+
+  // Tracks which dummy DM channels have been "left" locally
+  const hiddenDummyDMs  = ref(new Set());
 
   const realDMs = computed(() => {
     if (!session.value) return [];
@@ -359,21 +388,20 @@ function setup() {
 
   const allDMs = computed(() => {
     const real = realDMs.value.toSorted((a, b) => b.created - a.created);
-    return [...real, ...DUMMY_DMS];
+    const dummies = DUMMY_DMS.filter(d => !hiddenDummyDMs.value.has(d.channel));
+    return [...real, ...dummies];
   });
 
   const filteredDMs = computed(() => {
     const q = dmSearch.value.toLowerCase().trim();
     const tagsF = dmTagFilter.value;
     return allDMs.value.filter(d => {
-      // text search across partner name (and tag substrings, for back-compat)
       if (q) {
         const nameMatch = d.partnerName.toLowerCase().includes(q);
         const tagSubMatch = getActorTags(d.partnerActor)
           .some(t => t.toLowerCase().includes(q));
         if (!nameMatch && !tagSubMatch) return false;
       }
-      // tag dropdown filter (must have at least one of the selected tags)
       if (tagsF.length) {
         const tags = getActorTags(d.partnerActor);
         if (!tagsF.some(t => tags.includes(t))) return false;
@@ -382,7 +410,6 @@ function setup() {
     });
   });
 
-  // Tag dropdown helpers for DMs (mirror the Study filter helpers)
   const availableDmTags = computed(() =>
     TAG_OPTIONS.filter(t => !dmTagFilter.value.includes(t))
   );
@@ -395,6 +422,31 @@ function setup() {
   }
   function removeDmTag(t) {
     dmTagFilter.value = dmTagFilter.value.filter(x => x !== t);
+  }
+
+  // Graffiti object for the currently active DM (needed to delete/leave)
+  const activeDMConvObject = computed(() =>
+    activeDMChannel.value
+      ? dmConvObjects.value.find(c => c.value.channel === activeDMChannel.value) ?? null
+      : null
+  );
+
+  // Leave / remove a DM conversation
+  async function leaveDM() {
+    const wasDummy = activeDMIsDummy.value;
+    const chan = activeDMChannel.value;
+    if (wasDummy) {
+      hiddenDummyDMs.value = new Set([...hiddenDummyDMs.value, chan]);
+    } else if (activeDMConvObject.value) {
+      try { await graffiti.delete(activeDMConvObject.value, session.value); }
+      catch { /* non-fatal */ }
+    }
+    activeDMChannel.value      = null;
+    activeDMPartnerName.value  = null;
+    activeDMPartnerActor.value = null;
+    activeDMIsDummy.value      = false;
+    router.push("/chats");
+    showToast("Conversation removed");
   }
 
   function selectDM(conv) {
@@ -434,7 +486,7 @@ function setup() {
           created: Date.now(),
         },
         channels: [DMS_CHANNEL],
-        allowed: [me, partnerActor], // only the two participants can see this
+        allowed: [me, partnerActor],
       },
       session.value
     );
@@ -444,7 +496,6 @@ function setup() {
     router.push({ name: "chat", params: { chatId: encodeURIComponent(newCh) } });
   }
 
-  // Restore DM state when navigating directly to /chat/:chatId
   watch(
     () => router.currentRoute.value.params.chatId,
     (chatId) => {
@@ -468,7 +519,6 @@ function setup() {
   );
 
   // ── Study groups ───────────────────────────────────────────────
-  // Create form state
   const newGroupTitle       = ref("");
   const newGroupDescription = ref("");
   const newGroupTags        = ref([]);
@@ -483,13 +533,11 @@ function setup() {
   const creatingGroup       = ref(false);
   const createError         = ref("");
 
-  // Leaflet map state
   let joinMap          = null;
   let createMap        = null;
   let createMapMarker  = null;
   const joinMapMarkers = [];
 
-  // Filter state for the Join sub-tab
   const studySearch     = ref("");
   const studyTagFilter  = ref([]);
   const studyDateFilter = ref("");
@@ -497,11 +545,9 @@ function setup() {
   const studyEndsBy     = ref("");
   const filterTagDropdown = ref("");
 
-  // Modal state
   const viewingSession = ref(null);
   const joiningGroup   = ref(false);
 
-  // Memberships (who has joined which session)
   const { objects: membershipObjects } = useGraffitiDiscover(
     [STUDY_MEMBERSHIPS_CHANNEL],
     {
@@ -537,8 +583,6 @@ function setup() {
 
   const allGroups = computed(() => [...realGroups.value, ...DUMMY_GROUPS]);
 
-  // Compute members of a session: dummyMembers (for demos) + real memberships
-  // + the creator (auto-joined). Returns array of actor identifiers.
   function getSessionMembers(group) {
     const set = new Set();
     if (group.creatorActor) set.add(group.creatorActor);
@@ -551,7 +595,6 @@ function setup() {
     return [...set];
   }
 
-  // Did the current user join this session?
   function isMemberOf(group) {
     if (!group) return false;
     const me = session.value?.actor;
@@ -562,6 +605,16 @@ function setup() {
     );
   }
 
+  // Count of active filters (for badge on collapsed filter panel)
+  const activeFilterCount = computed(() => {
+    let n = 0;
+    if (studyTagFilter.value.length) n += studyTagFilter.value.length;
+    if (studyDateFilter.value) n++;
+    if (studyStartsBy.value) n++;
+    if (studyEndsBy.value) n++;
+    return n;
+  });
+
   const filteredGroups = computed(() => {
     const q = studySearch.value.toLowerCase().trim();
     const tagsF  = studyTagFilter.value;
@@ -569,35 +622,33 @@ function setup() {
     const sBy    = studyStartsBy.value;
     const eBy    = studyEndsBy.value;
     return allGroups.value.filter(g => {
-      // text search across title and description
+      // Auto-hide past sessions unless user turns this off
+      if (hideExpired.value && isSessionExpired(g)) return false;
       if (q) {
         const inTitle = g.title.toLowerCase().includes(q);
         const inDesc  = (g.description || "").toLowerCase().includes(q);
         if (!inTitle && !inDesc) return false;
       }
-      // class tags filter (match any selected tag)
       if (tagsF.length) {
         const tags = g.tags || [];
         if (!tagsF.some(t => tags.includes(t))) return false;
       }
-      // date filter
       if (dateF && g.date !== dateF) return false;
-      // starts-by filter — session starts at or before this time
       if (sBy && (!g.startTime || g.startTime > sBy)) return false;
-      // ends-by filter — session ends at or before this time
       if (eBy && (!g.endTime || g.endTime > eBy)) return false;
       return true;
     });
   });
 
-  // Sessions that the current user has joined or created (used for the
-  // "My Sessions" sidebar in the Session Chats sub-tab). Demo sessions
-  // are always visible so users can browse the chats without joining.
+  // Number of sessions hidden by the expiry filter
+  const expiredSessionCount = computed(() =>
+    allGroups.value.filter(g => isSessionExpired(g)).length
+  );
+
   const myJoinedGroups = computed(() => {
     return allGroups.value.filter(g => g.isDummy || isMemberOf(g));
   });
 
-  // The My Sessions sidebar reuses the Join keyword search.
   const myJoinedGroupsFiltered = computed(() => {
     const q = studySearch.value.toLowerCase().trim();
     if (!q) return myJoinedGroups.value;
@@ -607,6 +658,13 @@ function setup() {
       return (g.tags || []).some(t => t.toLowerCase().includes(q));
     });
   });
+
+  // The currently open study group object (for leave button in chat header)
+  const activeStudyGroup = computed(() =>
+    activeStudyChannel.value
+      ? myJoinedGroups.value.find(g => g.channel === activeStudyChannel.value) ?? null
+      : null
+  );
 
   async function createGroup() {
     createError.value = "";
@@ -646,7 +704,6 @@ function setup() {
         },
         session.value
       );
-      // reset form
       newGroupTitle.value       = "";
       newGroupDescription.value = "";
       newGroupTags.value        = [];
@@ -659,14 +716,13 @@ function setup() {
       newGroupPinLng.value      = null;
       newGroupPinAddress.value  = "";
       if (createMapMarker) { createMapMarker.remove(); createMapMarker = null; }
-      // jump to Join so the user can see their new session
       studySubTab.value = "join";
+      showToast("Study session created ✓");
     } finally {
       creatingGroup.value = false;
     }
   }
 
-  // Click a session card in Join → open the details modal
   function viewSession(group) {
     viewingSession.value = group;
   }
@@ -675,11 +731,9 @@ function setup() {
     viewingSession.value = null;
   }
 
-  // Post a membership for the current user (no-op for dummies / already-joined).
   async function joinSession(group) {
     if (!session.value) return;
     if (group.isDummy) {
-      // demo sessions: just open the chat
       selectGroup(group);
       closeViewSession();
       return;
@@ -705,12 +759,42 @@ function setup() {
       );
       selectGroup(group);
       closeViewSession();
+      showToast("Joined session ✓");
     } finally {
       joiningGroup.value = false;
     }
   }
 
-  // Reset all Join filters
+  // Find user's own membership record for a session
+  function myMembershipFor(group) {
+    if (!session.value || group.isDummy) return null;
+    return membershipObjects.value.find(
+      m => m.actor === session.value.actor && m.value.sessionChannel === group.channel
+    ) ?? null;
+  }
+
+  // Leave a study session (deletes membership record)
+  async function leaveSession(group) {
+    if (!session.value || !group || group.isDummy) return;
+    if (group.creatorActor === session.value.actor) {
+      showToast("You created this session — use Delete to remove it.");
+      return;
+    }
+    const membership = myMembershipFor(group);
+    if (membership) {
+      try { await graffiti.delete(membership, session.value); }
+      catch { /* non-fatal */ }
+    }
+    if (activeStudyChannel.value === group.channel) {
+      activeStudyChannel.value = null;
+      activeStudyTitle.value   = null;
+      studySubTab.value        = "join";
+      router.push("/study");
+    }
+    closeViewSession();
+    showToast("Left session");
+  }
+
   function clearStudyFilters() {
     studySearch.value     = "";
     studyTagFilter.value  = [];
@@ -720,7 +804,6 @@ function setup() {
     filterTagDropdown.value = "";
   }
 
-  // Tag dropdown helpers
   function addCreateTag() {
     const t = newGroupTagDropdown.value;
     if (t && !newGroupTags.value.includes(t)) {
@@ -742,7 +825,6 @@ function setup() {
     studyTagFilter.value = studyTagFilter.value.filter(x => x !== t);
   }
 
-  // Available options remaining (not already selected)
   const availableCreateTags = computed(() =>
     TAG_OPTIONS.filter(t => !newGroupTags.value.includes(t))
   );
@@ -750,17 +832,14 @@ function setup() {
     TAG_OPTIONS.filter(t => !studyTagFilter.value.includes(t))
   );
 
-  // Find a profile/display-name for any actor (real or dummy)
   function getActorDisplayName(actor) {
     if (!actor) return "Unknown";
     const profile = allProfiles.value.find(p => p.actor === actor);
     if (profile?.value?.displayName) return profile.value.displayName;
-    // fall back to a short version of the raw actor string
     if (actor.startsWith("dummy-")) return actor.replace(/^dummy-/, "");
     return actor;
   }
 
-  // Pretty-print a YYYY-MM-DD as e.g. "Wed, May 6"
   function fmtDate(s) {
     if (!s) return "";
     const [y, m, d] = s.split("-").map(Number);
@@ -768,7 +847,6 @@ function setup() {
     const dt = new Date(y, m - 1, d);
     return dt.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
   }
-  // Pretty-print HH:MM (24h) as "2:00 PM"
   function fmtTime(s) {
     if (!s) return "";
     const [h, m] = s.split(":").map(Number);
@@ -787,7 +865,6 @@ function setup() {
 
   const suggestedTopics = SUGGESTED_TOPICS;
 
-  // Restore study state when navigating directly to /study/:groupId
   watch(
     () => router.currentRoute.value.params.groupId,
     (groupId) => {
@@ -898,19 +975,24 @@ function setup() {
         session.value
       );
       editingProfile.value = false;
+      showToast("Profile saved ✓");
     } finally {
       savingProfile.value = false;
     }
   }
 
-  // Look up tags for any actor (used in DM list and profile modal)
+  // Navigate to Connect tab and open profile editor immediately
+  function openProfileQuickEdit() {
+    setTab("connect");
+    nextTick(() => startEdit());
+  }
+
   function getActorTags(actor) {
     if (!actor) return [];
     const profile = allProfiles.value.find(p => p.actor === actor);
     return profile?.value?.tags || [];
   }
 
-  // Toggle a tag in the profile editor
   function toggleProfileTag(tag) {
     const tags = profileDraft.value.tags || [];
     profileDraft.value.tags = tags.includes(tag)
@@ -918,7 +1000,6 @@ function setup() {
       : [...tags, tag];
   }
 
-  // Toggle a tag when creating a study session
   function toggleGroupTag(tag) {
     newGroupTags.value = newGroupTags.value.includes(tag)
       ? newGroupTags.value.filter(t => t !== tag)
@@ -937,6 +1018,21 @@ function setup() {
       .toSorted((a, b) => b.value.published - a.value.published);
   });
 
+  // Auto-scroll message list to latest message
+  watch(activeMessages, async () => {
+    await nextTick();
+    const list = document.querySelector(".msg-list");
+    if (list) list.scrollTop = 0; // column-reverse means 0 = newest (bottom)
+  });
+
+  // Auto-focus input when a chat opens
+  watch(activeChannel, async (val) => {
+    if (!val) return;
+    await nextTick();
+    const input = document.querySelector(".msg-input");
+    if (input) input.focus();
+  });
+
   // ── Send / Delete ──────────────────────────────────────────────
   const draft    = ref("");
   const sending  = ref(false);
@@ -948,8 +1044,6 @@ function setup() {
     if (!draft.value.trim() || !ch) return;
     sending.value = true;
     try {
-      // For real DMs, restrict the message to sender + recipient only.
-      // Study group messages stay public (no allowed).
       const allowed =
         isDM && !activeDMIsDummy.value && activeDMPartnerActor.value
           ? [session.value.actor, activeDMPartnerActor.value]
@@ -997,8 +1091,6 @@ function setup() {
   }
 
   // ── Leaflet maps ───────────────────────────────────────────────
-  // Fix the default Leaflet marker icon URLs (they point to local
-  // assets by default; we serve from the unpkg CDN instead).
   function patchLeafletIcons() {
     if (!window.L || window.__leafletIconsPatched) return;
     const proto = window.L.Icon.Default.prototype;
@@ -1011,7 +1103,6 @@ function setup() {
     window.__leafletIconsPatched = true;
   }
 
-  // Initialise the Join map and seed pins for the current filter.
   function initJoinMap() {
     if (!window.L) return;
     patchLeafletIcons();
@@ -1024,13 +1115,9 @@ function setup() {
       maxZoom: 19,
     }).addTo(joinMap);
     refreshJoinMarkers();
-    // Leaflet sometimes lays out before the container finishes sizing
-    // (especially on the very first navigation). Retry a few times so
-    // tiles always paint correctly.
     [0, 60, 250, 600].forEach(d => setTimeout(() => {
       if (joinMap) joinMap.invalidateSize();
     }, d));
-    // Also re-measure if the container resizes (e.g. window resize).
     if (window.ResizeObserver && !joinMap._roAttached) {
       const ro = new ResizeObserver(() => { if (joinMap) joinMap.invalidateSize(); });
       ro.observe(el);
@@ -1048,7 +1135,6 @@ function setup() {
     joinMap = null;
   }
 
-  // Sync the pins on the Join map with whatever filteredGroups currently is.
   function refreshJoinMarkers() {
     if (!joinMap || !window.L) return;
     joinMapMarkers.forEach(m => m.remove());
@@ -1068,13 +1154,6 @@ function setup() {
     }
   }
 
-  function escapeHtml(s) {
-    return String(s ?? "").replace(/[&<>"']/g, ch => ({
-      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-    }[ch]));
-  }
-
-  // Initialise the Create-form pin picker map.
   function initCreateMap() {
     if (!window.L) return;
     patchLeafletIcons();
@@ -1124,7 +1203,6 @@ function setup() {
     if (doGeocode) reverseGeocode(lat, lng);
   }
 
-  // Optional: ask Nominatim for a human-readable address. Best-effort.
   async function reverseGeocode(lat, lng) {
     const fallback = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
     newGroupPinAddress.value = fallback;
@@ -1146,15 +1224,12 @@ function setup() {
     if (createMapMarker) { createMapMarker.remove(); createMapMarker = null; }
   }
 
-  // Init/tear down maps as the user moves between sub-tabs.
-  // Only fires when both: tab === "study" and the relevant sub-tab is active.
   watch(
     () => (tab.value === "study" ? studySubTab.value : null),
     async (val, oldVal) => {
       if (oldVal === "join")   tearDownJoinMap();
       if (oldVal === "create") tearDownCreateMap();
       await nextTick();
-      // Two ticks helps when v-if templates have just been mounted.
       await nextTick();
       if (val === "join")   initJoinMap();
       if (val === "create") initCreateMap();
@@ -1162,22 +1237,27 @@ function setup() {
     { immediate: true }
   );
 
-  // Update Join markers whenever filtered list changes.
   watch(filteredGroups, () => {
     if (joinMap) refreshJoinMarkers();
   });
 
-  // Try to init the Join map on first mount if user lands directly there.
   onMounted(async () => {
     await nextTick();
-    if (tab.value === "study" && studySubTab.value === "join")  initJoinMap();
+    if (tab.value === "study" && studySubTab.value === "join")   initJoinMap();
     if (tab.value === "study" && studySubTab.value === "create") initCreateMap();
   });
 
   onBeforeUnmount(() => {
     tearDownJoinMap();
     tearDownCreateMap();
+    if (toastTimer) clearTimeout(toastTimer);
   });
+
+  function escapeHtml(s) {
+    return String(s ?? "").replace(/[&<>"']/g, ch => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[ch]));
+  }
 
   return {
     tab, setTab, studySubTab,
@@ -1186,36 +1266,41 @@ function setup() {
     showNewDM, dmSearch, filteredDMs, pickerResults,
     dmTagFilter, dmTagDropdown, addDmTag, removeDmTag, availableDmTags,
     activeDMChannel, activeDMPartnerName, activeDMPartnerActor, activeDMIsDummy,
+    activeDMConvObject, leaveDM,
     selectDM, openOrCreateDM,
-    // study groups
     allGroups, filteredGroups, myJoinedGroups, myJoinedGroupsFiltered,
+    activeStudyGroup,
     studySearch, studyTagFilter, studyDateFilter, studyStartsBy, studyEndsBy,
     filterTagDropdown, addFilterTag, removeFilterTag, availableFilterTags,
     clearStudyFilters,
-    // session create form
+    filterCollapsed, activeFilterCount,
+    hideExpired, isSessionExpired, expiredSessionCount,
     newGroupTitle, newGroupDescription, newGroupTags, newGroupDate,
     newGroupStartTime, newGroupEndTime, newGroupLocation,
     newGroupTagDropdown, addCreateTag, removeCreateTag, availableCreateTags,
     newGroupPinLat, newGroupPinLng, newGroupPinAddress, clearCreatePin,
     creatingGroup, createError, createGroup, selectGroup,
-    // session details modal
     viewingSession, viewSession, closeViewSession, joinSession, joiningGroup,
     isMemberOf, getSessionMembers, getActorDisplayName,
+    myMembershipFor, leaveSession,
     fmtDate, fmtTime,
     activeStudyChannel, activeStudyTitle, activeStudyIsDummy, suggestedTopics,
     myProfile, filteredProfiles, searchQ,
     getActorTags, toggleProfileTag, toggleGroupTag,
     editingProfile, profileDraft, savingProfile, startEdit, saveProfile,
+    openProfileQuickEdit,
     activeMessages, messagesLoading,
     draft, sending, send,
     deleting, del,
     isMine, senderLabel, fmt,
+    toastMsg,
   };
 }
 
-const App = { template: "#template", setup, components: { ChatMessage } };
+const App = { template: "#template", setup, components: { ChatMessage, ActorHandle } };
 
 createApp(App)
   .use(GraffitiPlugin, { graffiti: new GraffitiDecentralized() })
   .use(router)
+  .component("ActorHandle", ActorHandle)
   .mount("#app");

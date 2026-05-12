@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>IM App</title>
+  <title>EMIT</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
@@ -13,7 +13,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
           crossorigin=""></script>
-  <link rel="stylesheet" href="style.css?v=7"/>
+  <link rel="stylesheet" href="style.css"/>
   <script type="importmap">
   {
     "imports": {
@@ -25,7 +25,7 @@
     }
   }
   </script>
-  <script src="index.js?v=8" type="module"></script>
+  <script src="index.js" type="module"></script>
 </head>
 <body>
 <div id="app"><div style="height:100vh;display:flex;align-items:center;justify-content:center;color:#585048;font-family:monospace;font-size:13px">Loading…</div></div>
@@ -53,10 +53,12 @@
         <span class="brand-tag">Beta</span>
       </div>
       <div style="display:flex;align-items:center;gap:10px">
-        <div class="user-chip">
+        <!-- Clickable chip → quick profile edit -->
+        <button class="user-chip" @click="openProfileQuickEdit()" title="Edit your profile">
           <span class="user-dot"></span>
-          <graffiti-actor-to-handle :actor="$graffitiSession.value.actor"/>
-        </div>
+          <actor-handle :actor="$graffitiSession.value.actor"/>
+          <span class="chip-edit-icon">✎</span>
+        </button>
         <button class="btn btn-sm" @click="$graffiti.logout($graffitiSession.value)">Sign Out</button>
       </div>
     </header>
@@ -148,13 +150,19 @@
                 <div class="dm-avatar" @click.stop="openProfile(conv.partnerActor)" style="cursor:pointer">{{ conv.partnerName[0].toUpperCase() }}</div>
                 <div class="dm-info">
                   <div class="dm-handle" v-if="conv.isDummy">{{ conv.partnerName }}</div>
-                  <div class="dm-handle" v-else><graffiti-actor-to-handle :actor="conv.partnerActor"/></div>
+                  <div class="dm-handle" v-else><actor-handle :actor="conv.partnerActor"/></div>
                   <div class="dm-preview">{{ conv.preview }}</div>
                   <div class="tag-row" v-if="getActorTags(conv.partnerActor).length">
                     <span class="tag-pill" v-for="t of getActorTags(conv.partnerActor).slice(0,3)" :key="t">{{ t }}</span>
                     <span class="tag-more" v-if="getActorTags(conv.partnerActor).length > 3">···</span>
                   </div>
                 </div>
+                <!-- Leave button for each DM row -->
+                <button
+                  class="leave-icon-btn"
+                  title="Leave conversation"
+                  @click.stop="selectDM(conv); $nextTick(() => leaveDM())"
+                >✕</button>
               </div>
             </div>
           </template>
@@ -172,8 +180,10 @@
           <template v-else>
             <div class="chat-top">
               <span class="chat-top-name" v-if="activeDMIsDummy">{{ activeDMPartnerName }}</span>
-              <span class="chat-top-name" v-else><graffiti-actor-to-handle :actor="activeDMPartnerActor"/></span>
+              <span class="chat-top-name" v-else><actor-handle :actor="activeDMPartnerActor"/></span>
               <span class="badge badge-dm">DM</span>
+              <div style="flex:1"></div>
+              <button class="btn btn-ghost btn-sm chat-leave-btn" @click="leaveDM()">✕ Leave</button>
             </div>
             <div class="msg-list">
               <template v-if="messagesLoading && !activeDMIsDummy">
@@ -219,47 +229,71 @@
           <!-- ── JOIN sub-tab ─────────────────────────────────── -->
           <template v-if="studySubTab==='join'">
             <div class="join-pane">
-              <!-- Filter panel -->
+
+              <!-- ── Compact filter panel ───────────────────── -->
               <div class="filter-panel">
-                <div class="filter-row">
-                  <div class="search-wrap" style="flex:1">
+                <!-- Always-visible top row: search + Filters toggle + expired toggle + clear -->
+                <div class="filter-toggle-row">
+                  <div class="search-wrap" style="flex:1;min-width:0">
                     <span class="search-icon">⌕</span>
                     <input
                       class="search-field"
                       v-model="studySearch"
-                      placeholder="Search by keywords in title or description…"
+                      placeholder="Search sessions…"
                     />
                   </div>
+                  <button
+                    class="btn btn-sm filter-toggle-btn"
+                    :class="{active: !filterCollapsed}"
+                    @click="filterCollapsed = !filterCollapsed"
+                  >
+                    Filters
+                    <span v-if="activeFilterCount" class="filter-badge">{{ activeFilterCount }}</span>
+                  </button>
+                  <button
+                    class="expired-toggle-btn"
+                    :class="{active: hideExpired}"
+                    @click="hideExpired = !hideExpired"
+                    :title="hideExpired ? 'Showing active only — click to show all' : 'Click to hide past sessions'"
+                  >
+                    {{ hideExpired ? 'Active only' : 'All sessions' }}
+                    <span v-if="hideExpired && expiredSessionCount" class="filter-badge">{{ expiredSessionCount }} hidden</span>
+                  </button>
                   <button class="btn btn-sm" @click="clearStudyFilters()">Clear</button>
                 </div>
-                <div class="filter-grid">
-                  <div class="filter-cell">
-                    <label class="field-label">Class tags</label>
-                    <select class="field" v-model="filterTagDropdown" @change="addFilterTag()">
-                      <option value="">+ Add a class tag…</option>
-                      <option v-for="t of availableFilterTags" :key="t" :value="t">{{ t }}</option>
-                    </select>
-                    <div class="tag-row" v-if="studyTagFilter.length" style="margin-top:6px">
-                      <span class="tag-pill removable" v-for="t of studyTagFilter" :key="t">
-                        {{ t }}
-                        <button class="tag-remove" @click="removeFilterTag(t)" aria-label="Remove tag">×</button>
-                      </span>
+
+                <!-- Collapsible filters -->
+                <div class="filter-expanded" v-show="!filterCollapsed">
+                  <div class="filter-grid">
+                    <div class="filter-cell">
+                      <label class="field-label">Class tags</label>
+                      <select class="field" v-model="filterTagDropdown" @change="addFilterTag()">
+                        <option value="">+ Add a class tag…</option>
+                        <option v-for="t of availableFilterTags" :key="t" :value="t">{{ t }}</option>
+                      </select>
+                      <div class="tag-row" v-if="studyTagFilter.length" style="margin-top:6px">
+                        <span class="tag-pill removable" v-for="t of studyTagFilter" :key="t">
+                          {{ t }}
+                          <button class="tag-remove" @click="removeFilterTag(t)" aria-label="Remove tag">×</button>
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                  <div class="filter-cell">
-                    <label class="field-label">Date</label>
-                    <input class="field" type="date" v-model="studyDateFilter"/>
-                  </div>
-                  <div class="filter-cell">
-                    <label class="field-label">Starts by</label>
-                    <input class="field" type="time" v-model="studyStartsBy"/>
-                  </div>
-                  <div class="filter-cell">
-                    <label class="field-label">Ends by</label>
-                    <input class="field" type="time" v-model="studyEndsBy"/>
+                    <div class="filter-cell">
+                      <label class="field-label">Date</label>
+                      <input class="field" type="date" v-model="studyDateFilter"/>
+                    </div>
+                    <div class="filter-cell">
+                      <label class="field-label">Starts by</label>
+                      <input class="field" type="time" v-model="studyStartsBy"/>
+                    </div>
+                    <div class="filter-cell">
+                      <label class="field-label">Ends by</label>
+                      <input class="field" type="time" v-model="studyEndsBy"/>
+                    </div>
                   </div>
                 </div>
               </div>
+
               <!-- Split: list on left, map on right -->
               <div class="join-split">
                 <div class="join-list-col">
@@ -267,6 +301,7 @@
                     <div v-if="allGroups.length===0" class="join-empty">No sessions yet. Head to <strong>Create</strong> to make one.</div>
                     <div v-else-if="filteredGroups.length===0" class="join-empty">
                       No sessions match your filters.
+                      <span v-if="hideExpired && expiredSessionCount"> ({{ expiredSessionCount }} past sessions hidden)</span>
                     </div>
                     <div
                       v-for="g of filteredGroups" :key="g.url"
@@ -284,8 +319,11 @@
                       </div>
                       <div class="session-card-where" v-if="g.location">📍 {{ g.location }}</div>
                       <div class="session-card-meta">
-                        by {{ getActorDisplayName(g.creatorActor) || g.creatorName }}
+                        by
+                        <span v-if="g.isDummy">{{ g.creatorName }}</span>
+                        <actor-handle v-else :actor="g.creatorActor"/>
                         <span v-if="g.isDummy" class="demo-tag">demo</span>
+                        <span v-if="isSessionExpired(g)" class="session-expired-tag">Past</span>
                       </div>
                       <div class="session-card-action">
                         {{ isMemberOf(g) ? 'Open details →' : 'View · Join →' }}
@@ -411,12 +449,24 @@
                     class="group-item" :class="{active: activeStudyChannel===g.channel}"
                     @click="selectGroup(g)"
                   >
-                    <div class="group-title">{{ g.title }}</div>
+                    <div class="group-item-top">
+                      <div class="group-title">{{ g.title }}</div>
+                      <!-- Leave button — only for real sessions you didn't create -->
+                      <button
+                        v-if="!g.isDummy && g.creatorActor !== $graffitiSession.value?.actor"
+                        class="leave-icon-btn"
+                        title="Leave session"
+                        @click.stop="leaveSession(g)"
+                      >✕</button>
+                    </div>
                     <div class="tag-row" v-if="g.tags && g.tags.length" style="margin:3px 0">
                       <span class="tag-pill" v-for="t of g.tags" :key="t">{{ t }}</span>
                     </div>
                     <div class="group-meta">
-                      <em>by {{ getActorDisplayName(g.creatorActor) || g.creatorName }}</em>
+                      <em>by
+                        <span v-if="g.isDummy">{{ g.creatorName }}</span>
+                        <actor-handle v-else :actor="g.creatorActor"/>
+                      </em>
                       <span v-if="g.isDummy" style="color:var(--text-dim)"> · demo</span>
                     </div>
                   </div>
@@ -436,6 +486,13 @@
                   <div class="chat-top">
                     <span class="chat-top-name">{{ activeStudyTitle }}</span>
                     <span class="badge badge-grp">Group</span>
+                    <div style="flex:1"></div>
+                    <!-- Leave button in chat header — only if not creator and not dummy -->
+                    <button
+                      v-if="activeStudyGroup && !activeStudyGroup.isDummy && activeStudyGroup.creatorActor !== $graffitiSession.value?.actor"
+                      class="btn btn-ghost btn-sm chat-leave-btn"
+                      @click="leaveSession(activeStudyGroup)"
+                    >✕ Leave</button>
                   </div>
                   <div class="msg-list">
                     <template v-if="messagesLoading && !activeStudyIsDummy">
@@ -483,7 +540,7 @@
                 <div class="profile-name">{{ myProfile?.value.displayName || '—' }}</div>
                 <div class="profile-bio">{{ myProfile?.value.bio || 'No bio set.' }}</div>
                 <div class="profile-handle">
-                  <graffiti-actor-to-handle :actor="$graffitiSession.value.actor"/>
+                  <actor-handle :actor="$graffitiSession.value.actor"/>
                 </div>
               </div>
               <button class="btn btn-sm" style="align-self:flex-start" @click="startEdit()">
@@ -537,7 +594,7 @@
                   <div class="result-name">{{ p.value.displayName }}</div>
                   <div class="result-bio">{{ p.value.bio }}</div>
                   <div class="result-actor" v-if="!p.isDummy">
-                    <graffiti-actor-to-handle :actor="p.actor"/>
+                    <actor-handle :actor="p.actor"/>
                   </div>
                   <div class="result-actor" v-else>demo account</div>
                 </div>
@@ -589,9 +646,14 @@
           <div class="session-modal-row">
             <span class="session-modal-label">Organizer</span>
             <span class="session-modal-val">
-              {{ getActorDisplayName(viewingSession.creatorActor) || viewingSession.creatorName }}
+              <span v-if="viewingSession.isDummy">{{ viewingSession.creatorName }}</span>
+              <actor-handle v-else :actor="viewingSession.creatorActor"/>
               <span v-if="viewingSession.isDummy" class="demo-tag">demo</span>
             </span>
+          </div>
+          <div class="session-modal-row" v-if="isSessionExpired(viewingSession)">
+            <span class="session-modal-label">Status</span>
+            <span class="session-modal-val"><span class="session-expired-tag">Past session</span></span>
           </div>
         </div>
 
@@ -611,7 +673,10 @@
               @click="openProfile(actor)"
             >
               <div class="member-avatar">{{ (getActorDisplayName(actor) || '?')[0].toUpperCase() }}</div>
-              <span class="member-name">{{ getActorDisplayName(actor) }}</span>
+              <span class="member-name">
+                <span v-if="viewingSession.isDummy || actor === viewingSession.creatorActor">{{ getActorDisplayName(actor) || actor }}</span>
+                <actor-handle v-else :actor="actor"/>
+              </span>
               <span class="member-role" v-if="actor === viewingSession.creatorActor">organizer</span>
             </div>
           </div>
@@ -627,6 +692,12 @@
             <template v-else-if="viewingSession.isDummy">Open Demo Chat →</template>
             <template v-else>{{ joiningGroup ? 'Joining…' : 'Join Session' }}</template>
           </button>
+          <!-- Leave button: only for joined, non-dummy sessions the user didn't create -->
+          <button
+            v-if="isMemberOf(viewingSession) && !viewingSession.isDummy && viewingSession.creatorActor !== $graffitiSession.value?.actor"
+            class="btn btn-sm btn-danger"
+            @click="leaveSession(viewingSession); closeViewSession()"
+          >Leave Session</button>
           <button class="btn btn-sm" @click="closeViewSession()">Close</button>
         </div>
       </div>
@@ -640,7 +711,7 @@
         <div class="profile-modal-name">{{ viewingProfile.displayName }}</div>
         <div class="profile-modal-handle">
           <template v-if="viewingProfile.isDummy">demo account</template>
-          <graffiti-actor-to-handle v-else :actor="viewingProfile.actor"/>
+          <actor-handle v-else :actor="viewingProfile.actor"/>
         </div>
         <div class="tag-row" v-if="viewingProfile.tags && viewingProfile.tags.length" style="justify-content:center">
           <span class="tag-pill" v-for="t of viewingProfile.tags" :key="t">{{ t }}</span>
@@ -656,9 +727,15 @@
       </div>
     </div>
 
+    <!-- ── Toast notification ─────────────────────────────────────── -->
+    <Transition name="toast">
+      <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
+    </Transition>
+
   </template>
 
 </template>
+
 <!-- ── ChatMessage component template ───────────────────────────── -->
 <!-- Props: message (Object), isOwn (Boolean), isDeleting (Boolean) -->
 <!-- Emits: delete(message), view-profile(actor)                     -->
@@ -676,7 +753,7 @@
         style="cursor:pointer"
         @click="$emit('view-profile', message.actor)"
         v-else
-      ><graffiti-actor-to-handle :actor="message.actor"/></span>
+      ><actor-handle :actor="message.actor"/></span>
       <span class="msg-ts">{{ fmt(message.value.published) }}</span>
     </div>
     <div class="msg-bubble">{{ message.value.content }}</div>
@@ -689,4 +766,4 @@
 </template>
 
 </body>
-</html>
+</html>ß
